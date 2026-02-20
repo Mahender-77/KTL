@@ -5,12 +5,16 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from "react-native";
 import { useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import axiosInstance from "@/constants/api/axiosInstance";
 import ProductGrid from "@/components/product/ProductGrid";
+import SearchBar from "@/components/common/SearchBar";
 import { SCREEN_PADDING } from "@/constants/layout";
+import { colors } from "@/constants/colors";
+
 
 type Category = {
   _id: string;
@@ -28,27 +32,31 @@ type Product = {
 
 type Props = {
   selectedCategory: Category | null;
-  onBack: () => void; // goes all the way back to home
+  onBack: () => void;
 };
 
 export default function CategoryProducts({ selectedCategory, onBack }: Props) {
   const [products, setProducts] = useState<Product[]>([]);
   const [subCategories, setSubCategories] = useState<Category[]>([]);
   const [selectedSubCategory, setSelectedSubCategory] = useState<Category | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!selectedCategory) return;
-    fetchProducts(selectedCategory._id);
+    setSelectedSubCategory(null);
     fetchSubCategories(selectedCategory._id);
-    setSelectedSubCategory(null); // reset sub when parent changes
+    fetchProducts(selectedCategory._id);
   }, [selectedCategory]);
 
   const fetchProducts = async (categoryId: string) => {
     try {
+      setLoading(true);
       const res = await axiosInstance.get(`/api/products/public?category=${categoryId}`);
       setProducts(res.data);
     } catch (error) {
       console.log("Product fetch error:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -66,7 +74,6 @@ export default function CategoryProducts({ selectedCategory, onBack }: Props) {
     fetchProducts(sub._id);
   };
 
-  // Tapping the parent name in the breadcrumb resets sub selection
   const handleBackToParent = () => {
     setSelectedSubCategory(null);
     if (selectedCategory) fetchProducts(selectedCategory._id);
@@ -75,44 +82,45 @@ export default function CategoryProducts({ selectedCategory, onBack }: Props) {
   return (
     <View style={styles.container}>
 
-      {/* ── Breadcrumb ─────────────────────────────────────────────────────── */}
-      <View style={styles.breadcrumb}>
+      {/* ── Search Bar (same as home) ── */}
+      <SearchBar />
 
-        {/* Home segment */}
-        <TouchableOpacity style={styles.crumbBtn} onPress={onBack} activeOpacity={0.7}>
-          <Ionicons name="home-outline" size={20} color="#FF6B00" />
+      {/* ── Breadcrumb ── */}
+      <View style={styles.breadcrumb}>
+        {/* Home icon */}
+        <TouchableOpacity
+          onPress={onBack}
+          activeOpacity={0.7}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          style={styles.crumbBtn}
+        >
+          <Ionicons name="home-outline" size={20} color={colors.primary} />
         </TouchableOpacity>
 
-        {/* Separator */}
-        <Ionicons name="chevron-forward" size={16} color="#BBBBBB" style={styles.chevron} />
+        <Ionicons name="chevron-forward" size={16} color={colors.disabled} style={styles.chevron} />
 
         {/* Parent category */}
         <TouchableOpacity
-          style={styles.crumbBtn}
           onPress={selectedSubCategory ? handleBackToParent : undefined}
           activeOpacity={selectedSubCategory ? 0.7 : 1}
+          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+          style={styles.crumbBtn}
         >
-          <Text
-            style={[
-              styles.crumbText,
-              // Active (tappable) when a sub is selected — shows as orange link
-              selectedSubCategory ? styles.crumbLink : styles.crumbActive,
-            ]}
-          >
+          <Text style={[styles.crumbText, selectedSubCategory ? styles.crumbLink : styles.crumbActive]}>
             {selectedCategory?.name}
           </Text>
         </TouchableOpacity>
 
-        {/* Sub-category segment — only shown when one is selected */}
+        {/* Sub-category segment */}
         {selectedSubCategory && (
           <>
-            <Ionicons name="chevron-forward" size={13} color="#BBBBBB" style={styles.chevron} />
+            <Ionicons name="chevron-forward" size={13} color={colors.disabled} style={styles.chevron} />
             <Text style={styles.crumbActive}>{selectedSubCategory.name}</Text>
           </>
         )}
       </View>
 
-      {/* ── Sub-category chips ─────────────────────────────────────────────── */}
+      {/* ── Sub-category chips ── */}
       {subCategories.length > 0 && (
         <ScrollView
           horizontal
@@ -123,19 +131,12 @@ export default function CategoryProducts({ selectedCategory, onBack }: Props) {
           {subCategories.map((sub) => (
             <TouchableOpacity
               key={sub._id}
-              style={[
-                styles.chip,
-                selectedSubCategory?._id === sub._id && styles.chipActive,
-              ]}
+              style={[styles.chip, selectedSubCategory?._id === sub._id && styles.chipActive]}
               onPress={() => handleSubCategorySelect(sub)}
               activeOpacity={0.75}
+              hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
             >
-              <Text
-                style={[
-                  styles.chipText,
-                  selectedSubCategory?._id === sub._id && styles.chipTextActive,
-                ]}
-              >
+              <Text style={[styles.chipText, selectedSubCategory?._id === sub._id && styles.chipTextActive]}>
                 {sub.name}
               </Text>
             </TouchableOpacity>
@@ -143,80 +144,78 @@ export default function CategoryProducts({ selectedCategory, onBack }: Props) {
         </ScrollView>
       )}
 
-      {/* ── Products ───────────────────────────────────────────────────────── */}
-      <ProductGrid products={products} />
+      {/* ── Products ── */}
+      {loading ? (
+        <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
+      ) : products.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Ionicons name="basket-outline" size={48} color={colors.disabled} />
+          <Text style={styles.emptyText}>No products found</Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: 40 }}
+          showsVerticalScrollIndicator={false}
+        >
+          <ProductGrid products={products} />
+        </ScrollView>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 0,
+    flex: 1,
+    backgroundColor: colors.background,
   },
-
-  // Breadcrumb row
   breadcrumb: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: SCREEN_PADDING,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
-    marginBottom: 2,
+    borderBottomColor: colors.divider,
+    backgroundColor: colors.card,
   },
   crumbBtn: {
     flexDirection: "row",
     alignItems: "center",
   },
-  chevron: {
-    marginHorizontal: 4,
-  },
-  crumbText: {
-    fontSize: 20,
-    fontWeight: "500",
-  },
-  // Current/final segment — bold, dark, not tappable
-  crumbActive: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1A1A2E",
-  },
-  // Parent segment when sub is active — orange, signals it's tappable
+  chevron: { marginHorizontal: 6 },
+  crumbText: { fontSize: 15, fontWeight: "500", color: colors.textPrimary },
+  crumbActive: { fontSize: 15, fontWeight: "700", color: colors.textPrimary },
   crumbLink: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "500",
-    color: "#FF6B00",
+    color: colors.primary,
     textDecorationLine: "underline",
   },
-
-  // Sub-category chips
   chipScroll: {
     paddingHorizontal: SCREEN_PADDING,
     marginVertical: 12,
+    flexGrow: 0,         // prevent chipScroll from expanding and eating layout space
   },
   chipRow: {
     gap: 8,
     paddingRight: SCREEN_PADDING,
+    alignItems: "center",
   },
   chip: {
     paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: "#F2F2F2",
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: "#E8E8E8",
+    borderColor: colors.border,
   },
   chipActive: {
-    backgroundColor: "#1A1A2E",
-    borderColor: "#1A1A2E",
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
-  chipText: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#555",
-  },
-  chipTextActive: {
-    color: "#fff",
-    fontWeight: "700",
-  },
+  chipText: { fontSize: 13, fontWeight: "500", color: colors.textSecondary },
+  chipTextActive: { color: colors.card, fontWeight: "700" },
+  emptyState: { alignItems: "center", marginTop: 60, gap: 12 },
+  emptyText: { fontSize: 15, color: colors.textMuted },
 });
