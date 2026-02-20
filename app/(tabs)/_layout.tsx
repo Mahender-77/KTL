@@ -35,9 +35,8 @@ export default function TabLayout() {
         name="cart"
         options={{
           title: "Cart",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="cart-outline" size={size} color={color} />
-          ),
+          href: null, // Hide from tab bar but keep accessible via navigation
+          tabBarStyle: { display: "none" }, // Hide tab bar on cart page
         }}
       />
 

@@ -1,15 +1,17 @@
+// components/common/CartBadge.tsx
+
+import { colors } from "@/constants/colors";
+import { useCart } from "@/context/CartContext";
 import { View, Text, StyleSheet } from "react-native";
 
-type Props = {
-  count: number;
-};
+export default function CartBadge() {
+  const { totalItems } = useCart();
 
-export default function CartBadge({ count }: Props) {
-  if (count <= 0) return null;
+  if (totalItems <= 0) return null;
 
   return (
     <View style={styles.badge}>
-      <Text style={styles.text}>{count}</Text>
+      <Text style={styles.text}>{totalItems > 99 ? "99+" : totalItems}</Text>
     </View>
   );
 }
@@ -17,19 +19,21 @@ export default function CartBadge({ count }: Props) {
 const styles = StyleSheet.create({
   badge: {
     position: "absolute",
-    top: -5,
-    right: -8,
-    backgroundColor: "red",
+    top: -3,
+    right: -6,
+    backgroundColor: colors.error,
     borderRadius: 10,
     minWidth: 18,
     height: 18,
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: colors.card,
   },
   text: {
     color: "#fff",
     fontSize: 10,
-    fontWeight: "bold",
+    fontWeight: "800",
   },
 });

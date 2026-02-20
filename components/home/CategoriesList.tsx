@@ -1,3 +1,4 @@
+// components/home/CategoriesList.tsx
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useEffect, useState } from "react";
 import CategoryItem from "./CategoryItem";
@@ -28,21 +29,16 @@ const categoryIconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
   meat: "restaurant-outline",
 };
 
-
-export default function CategoriesList({ onSelectCategory }: Props) 
-{
+export default function CategoriesList({ onSelectCategory }: Props) {
   const [categories, setCategories] = useState<Category[]>([]);
 
   useEffect(() => {
     const fetchCategories = async () => {
       try {
         const res = await axiosInstance.get("/api/categories");
-
-        // show only parent categories
         const parentCategories = res.data.filter(
           (cat: Category) => !cat.parent
         );
-
         setCategories(parentCategories);
       } catch (error) {
         console.log("Category fetch error:", error);
@@ -52,8 +48,6 @@ export default function CategoriesList({ onSelectCategory }: Props)
     fetchCategories();
   }, []);
 
-
-
   return (
     <View style={styles.wrapper}>
       <ScrollView
@@ -61,16 +55,14 @@ export default function CategoriesList({ onSelectCategory }: Props)
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 20 }}
       >
-    {categories.map((item) => (
-  <CategoryItem
-    key={item._id}
-    title={item.name}
-    icon={
-      categoryIconMap[item.slug.toLowerCase()] || "grid-outline"
-    }
-    onPress={() => onSelectCategory(item)}   // 👈 ADD THIS
-  />
-))}
+        {categories.map((item) => (
+          <CategoryItem
+            key={item._id}
+            title={item.name}
+            icon={categoryIconMap[item.slug.toLowerCase()] || "grid-outline"}
+            onPress={() => onSelectCategory(item)}
+          />
+        ))}
       </ScrollView>
     </View>
   );

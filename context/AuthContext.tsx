@@ -4,6 +4,7 @@ import axiosInstance from "@/constants/api/axiosInstance";
 
 interface AuthContextType {
   isAuthenticated: boolean;
+  user: { name: string; email: string } | null;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -14,7 +15,21 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<{ name: string; email: string } | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const fetchUserInfo = async () => {
+    try {
+      const response = await axiosInstance.get("/api/auth/me");
+      setUser({
+        name: response.data.name,
+        email: response.data.email,
+      });
+    } catch (error) {
+      console.log("Failed to fetch user info:", error);
+      setUser(null);
+    }
+  };
 
   useEffect(() => {
     const checkToken = async () => {
@@ -25,6 +40,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           "Authorization"
         ] = `Bearer ${token}`;
         setIsAuthenticated(true);
+        await fetchUserInfo();
       }
 
       setLoading(false);
@@ -48,6 +64,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     ] = `Bearer ${token}`;
 
     setIsAuthenticated(true);
+    await fetchUserInfo();
   };
 
   const register = async (
@@ -70,17 +87,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     ] = `Bearer ${token}`;
 
     setIsAuthenticated(true);
+    setUser({ name, email });
   };
 
   const logout = async () => {
     await AsyncStorage.removeItem("accessToken");
     delete axiosInstance.defaults.headers.common["Authorization"];
     setIsAuthenticated(false);
+    setUser(null);
   };
 
   return (
     <AuthContext.Provider
-      value={{ isAuthenticated, login, register, logout, loading }}
+      value={{ isAuthenticated, user, login, register, logout, loading }}
     >
       {children}
     </AuthContext.Provider>

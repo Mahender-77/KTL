@@ -9,22 +9,14 @@ import {
   ActivityIndicator,
   StatusBar,
   Animated,
-  ScrollView,
-  Dimensions,
 } from "react-native";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useCart } from "@/context/CartContext";
 import axiosInstance from "@/constants/api/axiosInstance";
 import { colors } from "@/constants/colors";
 import { SCREEN_PADDING } from "@/constants/layout";
-import { router, useRouter } from "expo-router";
-import { useFocusEffect } from "@react-navigation/native";
-import { Product, Variant } from "@/assets/types/product";
-import Toast from "@/components/common/Toast";
-
-const { width: SW } = Dimensions.get("window");
-const SIMILAR_W = SW * 0.46;
+import { router } from "expo-router";
 
 interface CartItem {
   _id: string;
@@ -145,7 +137,7 @@ function EmptyCart() {
       </Text>
       <TouchableOpacity
         style={styles.shopBtn}
-        onPress={() => router.push("/(tabs)")}
+        onPress={() => router.back()}
         activeOpacity={0.85}
       >
         <Text style={styles.shopBtnText}>Start Shopping</Text>
@@ -155,187 +147,18 @@ function EmptyCart() {
   );
 }
 
-// ─── Related Product Card ─────────────────────────────────────────────────────
-function RelatedProductCard({ product, onAddToCart }: { product: Product; onAddToCart: (productId: string, variantId: string) => void }) {
-  const router = useRouter();
-  const [adding, setAdding] = useState(false);
-  const [showToast, setShowToast] = useState(false);
-  const v = product.variants?.[0];
-  const price = v?.offerPrice ?? v?.price ?? 0;
-  const orig = v?.offerPrice ? v.price : null;
-  const pct = v && v.offerPrice && v.offerPrice < v.price
-    ? Math.round(((v.price - v.offerPrice) / v.price) * 100)
-    : null;
-
-  const handleAdd = async (e: any) => {
-    e.stopPropagation?.();
-    if (!v?._id) return;
-
-    try {
-      setAdding(true);
-      await onAddToCart(product._id, v._id);
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 5000);
-    } catch (err) {
-      console.log("Add to cart failed:", err);
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  return (
-    <>
-      <TouchableOpacity
-        style={relatedStyles.card}
-        activeOpacity={0.9}
-        onPress={() => router.push({ pathname: "/product/[id]", params: { id: product._id } })}
-      >
-        <View style={relatedStyles.imgBox}>
-          <Image
-            source={{ uri: product.images?.[0] ?? "" }}
-            style={relatedStyles.img}
-            resizeMode="cover"
-          />
-          {pct && (
-            <View style={relatedStyles.badge}>
-              <Text style={relatedStyles.badgeT}>{pct}% OFF</Text>
-            </View>
-          )}
-        </View>
-        <View style={relatedStyles.info}>
-          <Text style={relatedStyles.name} numberOfLines={2}>
-            {product.name}
-          </Text>
-          {v && (
-            <Text style={relatedStyles.size}>
-              {v.value} {v.unit}
-            </Text>
-          )}
-          <View style={relatedStyles.priceRow}>
-            {orig && (
-              <Text style={relatedStyles.orig}>₹{orig.toLocaleString()}</Text>
-            )}
-            <Text style={relatedStyles.price}>₹{price.toLocaleString()}</Text>
-          </View>
-          <TouchableOpacity
-            style={relatedStyles.btn}
-            activeOpacity={0.85}
-            onPress={handleAdd}
-            disabled={adding}
-          >
-            {adding ? (
-              <ActivityIndicator size="small" color={colors.card} />
-            ) : (
-              <Text style={relatedStyles.btnT}>+ Add</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
-      <Toast
-        visible={showToast}
-        message={`${product.name} added to cart!`}
-        actionLabel="View Cart"
-        onAction={() => {
-          setShowToast(false);
-        }}
-        onDismiss={() => setShowToast(false)}
-        duration={5000}
-      />
-    </>
-  );
-}
-
-const relatedStyles = StyleSheet.create({
-  card: {
-    width: SIMILAR_W,
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    overflow: "hidden",
-    elevation: 3,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  imgBox: {
-    width: "100%",
-    aspectRatio: 1,
-    backgroundColor: colors.surface,
-    overflow: "hidden",
-  },
-  img: { width: "100%", height: "100%" },
-  badge: {
-    position: "absolute",
-    top: 6,
-    left: 6,
-    backgroundColor: colors.success,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 5,
-  },
-  badgeT: { color: colors.card, fontSize: 9, fontWeight: "800" },
-  info: { padding: 10 },
-  name: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: colors.textPrimary,
-    lineHeight: 16,
-    marginBottom: 4,
-  },
-  size: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: colors.primary,
-    backgroundColor: colors.surface,
-    alignSelf: "flex-start",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginBottom: 6,
-    overflow: "hidden",
-  },
-  priceRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: 4,
-    marginBottom: 8,
-  },
-  price: { fontSize: 14, fontWeight: "800", color: colors.primary },
-  orig: {
-    fontSize: 10,
-    color: colors.disabled,
-    textDecorationLine: "line-through",
-  },
-  btn: {
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    paddingVertical: 7,
-    alignItems: "center",
-  },
-  btnT: { color: colors.card, fontSize: 11, fontWeight: "700" },
-});
-
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function CartScreen() {
-  const { removeFromCart, refreshCart, addToCart } = useCart();
+  const { removeFromCart, refreshCart } = useCart();
   const [items, setItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkingOut, setCheckingOut] = useState(false);
-  const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
-  const [loadingRelated, setLoadingRelated] = useState(false);
 
   const fetchCart = async () => {
     try {
       setLoading(true);
       const res = await axiosInstance.get("/api/cart");
       setItems(res.data.items ?? []);
-      
-      // Fetch related products based on cart items' categories
-      if (res.data.items && res.data.items.length > 0) {
-        fetchRelatedProducts(res.data.items);
-      }
     } catch (err) {
       console.log("Cart fetch error:", err);
     } finally {
@@ -343,73 +166,18 @@ export default function CartScreen() {
     }
   };
 
-  const fetchRelatedProducts = async (cartItems: CartItem[]) => {
-    try {
-      setLoadingRelated(true);
-      // Get unique categories from cart items
-      const categories = new Set<string>();
-      
-      // Fetch product details to get categories
-      const productPromises = cartItems.map(item =>
-        axiosInstance.get(`/api/products/public/${item.product._id}`)
-      );
-      
-      const productResponses = await Promise.allSettled(productPromises);
-      productResponses.forEach((result) => {
-        if (result.status === "fulfilled" && result.value.data?.category) {
-          categories.add(result.value.data.category);
-        }
-      });
-
-      // Fetch related products from those categories
-      if (categories.size > 0) {
-        const categoryArray = Array.from(categories);
-        const category = categoryArray[0]; // Use first category
-        
-        const res = await axiosInstance.get(
-          `/api/products/public?category=${category}&limit=10`
-        );
-        
-        // Filter out products already in cart
-        const cartProductIds = new Set(cartItems.map(item => item.product._id));
-        const filtered = (res.data as Product[]).filter(
-          (p) => !cartProductIds.has(p._id)
-        );
-        
-        setRelatedProducts(filtered.slice(0, 6)); // Limit to 6 products
-      }
-    } catch (err) {
-      console.log("Related products fetch error:", err);
-    } finally {
-      setLoadingRelated(false);
-    }
-  };
-
-  const handleAddRelatedToCart = async (productId: string, variantId: string) => {
-    try {
-      await addToCart(productId, variantId);
-      await fetchCart(); // Refresh cart to show new item
-    } catch (err) {
-      console.log("Add to cart error:", err);
-      throw err;
-    }
-  };
-
-  // Fetch cart on mount and when screen comes into focus
-  useFocusEffect(
-    useCallback(() => {
-      fetchCart();
-    }, [])
-  );
+  useEffect(() => {
+    fetchCart();
+  }, []);
 
   const handleRemove = async (productId: string, variantId: string) => {
     try {
-      const res = await axiosInstance.delete("/api/cart/remove", {
-        data: { productId, variantId },
-      });
-      // Update items from API response to ensure consistency
-      setItems(res.data.items ?? []);
-      refreshCart();
+      await removeFromCart(productId, variantId);
+      setItems((prev) =>
+        prev.filter(
+          (i) => !(i.product._id === productId && i.variant === variantId),
+        ),
+      );
     } catch (err) {
       console.log("Remove error:", err);
     }
@@ -469,13 +237,9 @@ export default function CartScreen() {
           <TouchableOpacity
             style={styles.clearBtn}
             onPress={async () => {
-              try {
-                await axiosInstance.delete("/api/cart/clear");
-                setItems([]);
-                refreshCart();
-              } catch (err) {
-                console.log("Clear cart error:", err);
-              }
+              await axiosInstance.delete("/api/cart/clear");
+              setItems([]);
+              refreshCart();
             }}
             activeOpacity={0.7}
           >
@@ -507,99 +271,82 @@ export default function CartScreen() {
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
             ListFooterComponent={
-              <>
-                <View style={styles.summaryCard}>
-                  {/* Free delivery notice */}
-                  {deliveryFee > 0 && (
-                    <View style={styles.freeDeliveryBar}>
-                      <Ionicons
-                        name="bicycle-outline"
-                        size={14}
-                        color={colors.primary}
-                      />
-                      <Text style={styles.freeDeliveryText}>
-                        Add ₹{(500 - subtotal).toLocaleString()} more for free
-                        delivery
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Summary rows */}
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Subtotal</Text>
-                    <Text style={styles.summaryValue}>
-                      ₹{subtotal.toLocaleString()}
+              <View style={styles.summaryCard}>
+                {/* Free delivery notice */}
+                {deliveryFee > 0 && (
+                  <View style={styles.freeDeliveryBar}>
+                    <Ionicons
+                      name="bicycle-outline"
+                      size={14}
+                      color={colors.primary}
+                    />
+                    <Text style={styles.freeDeliveryText}>
+                      Add ₹{(500 - subtotal).toLocaleString()} more for free
+                      delivery
                     </Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Delivery</Text>
-                    <Text
-                      style={[
-                        styles.summaryValue,
-                        deliveryFee === 0 && styles.freeText,
-                      ]}
-                    >
-                      {deliveryFee === 0 ? "FREE" : `₹${deliveryFee}`}
-                    </Text>
-                  </View>
-                  <View style={styles.divider} />
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.totalLabel}>Total</Text>
-                    <Text style={styles.totalValue}>
-                      ₹{total.toLocaleString()}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Related Products Section */}
-                {relatedProducts.length > 0 && (
-                  <View style={styles.relatedSection}>
-                    <View style={styles.relatedHead}>
-                      <View style={styles.relatedBar} />
-                      <Text style={styles.relatedTitle}>You May Also Like</Text>
-                    </View>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.relatedList}
-                    >
-                      {relatedProducts.map((product) => (
-                        <RelatedProductCard
-                          key={product._id}
-                          product={product}
-                          onAddToCart={handleAddRelatedToCart}
-                        />
-                      ))}
-                    </ScrollView>
                   </View>
                 )}
-              </>
+
+                {/* Summary rows */}
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Subtotal</Text>
+                  <Text style={styles.summaryValue}>
+                    ₹{subtotal.toLocaleString()}
+                  </Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Delivery</Text>
+                  <Text
+                    style={[
+                      styles.summaryValue,
+                      deliveryFee === 0 && styles.freeText,
+                    ]}
+                  >
+                    {deliveryFee === 0 ? "FREE" : `₹${deliveryFee}`}
+                  </Text>
+                </View>
+                <View style={styles.divider} />
+                <View style={styles.summaryRow}>
+                  <Text style={styles.totalLabel}>Total</Text>
+                  <Text style={styles.totalValue}>
+                    ₹{total.toLocaleString()}
+                  </Text>
+                </View>
+              </View>
             }
           />
 
           {/* ── Checkout CTA ── */}
           <View style={styles.ctaWrap}>
+            <View style={styles.ctaTotal}>
+              <Text style={styles.ctaTotalLabel}>Total</Text>
+              <Text style={styles.ctaTotalValue}>
+                ₹{total.toLocaleString()}
+              </Text>
+            </View>
             <TouchableOpacity
-              style={styles.cartBtn}
-              activeOpacity={0.85}
-              onPress={() => {
-                // Keep cart open, just scroll to top or do nothing
-              }}
-            >
-              <Ionicons name="cart-outline" size={18} color={colors.primary} />
-              <Text style={styles.cartT}>Cart</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.buyBtn, checkingOut && { opacity: 0.7 }]}
+              style={[styles.checkoutBtn, checkingOut && { opacity: 0.7 }]}
               activeOpacity={0.85}
               disabled={checkingOut}
               onPress={() => {
-                router.push("/checkout");
+                setCheckingOut(true);
+                setTimeout(() => setCheckingOut(false), 2000);
               }}
             >
-              <Text style={styles.buyT}>Checkout</Text>
-              <View style={styles.buyDiv} />
-              <Text style={styles.buyPrice}>₹{total.toLocaleString()}</Text>
+              {checkingOut ? (
+                <ActivityIndicator color={colors.card} />
+              ) : (
+                <>
+                  <Text style={styles.checkoutBtnText}>
+                    Proceed to Checkout
+                  </Text>
+                  <Ionicons
+                    name="arrow-forward"
+                    size={18}
+                    color={colors.card}
+                  />
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </>
@@ -844,87 +591,48 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    flexDirection: "row",
-    gap: 10,
-    paddingHorizontal: SCREEN_PADDING,
-    paddingTop: 10,
-    paddingBottom: 26,
     backgroundColor: colors.card,
-    borderTopWidth: 1,
-    borderTopColor: colors.divider,
-    elevation: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-  },
-  cartBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingHorizontal: 16,
-    height: 52,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  cartT: { fontSize: 13, fontWeight: "700", color: colors.primary },
-  buyBtn: {
-    flex: 1,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: colors.primary,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buyT: { fontSize: 14, fontWeight: "700", color: colors.card },
-  buyDiv: {
-    width: 1,
-    height: 18,
-    backgroundColor: "rgba(255,255,255,0.35)",
-    marginHorizontal: 12,
-  },
-  buyPrice: {
-    fontSize: 15,
-    fontWeight: "900",
-    color: colors.card,
-    letterSpacing: -0.3,
-  },
-
-  // ── Related Products ──
-  relatedSection: {
-    backgroundColor: colors.card,
-    marginTop: 8,
-    paddingTop: 20,
-    paddingBottom: 20,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: colors.divider,
-  },
-  relatedHead: {
-    flexDirection: "row",
-    alignItems: "center",
     paddingHorizontal: SCREEN_PADDING,
-    marginBottom: 16,
-    gap: 8,
-  },
-  relatedBar: {
-    width: 4,
-    height: 20,
-    backgroundColor: colors.primary,
-    borderRadius: 2,
-  },
-  relatedTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: colors.textPrimary,
-    flex: 1,
-  },
-  relatedList: {
-    paddingHorizontal: SCREEN_PADDING,
+    paddingTop: 14,
+    paddingBottom: 28,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  ctaTotal: { gap: 2 },
+  ctaTotalLabel: { fontSize: 10, color: colors.textMuted, fontWeight: "600" },
+  ctaTotalValue: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: colors.primaryDark,
+    letterSpacing: -0.5,
+  },
+  checkoutBtn: {
+    flex: 1,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  checkoutBtnText: {
+    color: colors.card,
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
 });
-
