@@ -3,6 +3,8 @@ import { FlatList, View, Text, StyleSheet } from "react-native";
 import ProductCard from "./ProductCard";
 import { Product } from "@/assets/types/product";
 import { SCREEN_PADDING, CARD_GAP } from "@/constants/layout";
+import { colors } from "@/constants/colors";
+
 
 type Props = {
   products?: Product[];
@@ -54,7 +56,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   emptyText: {
-    color: "#999",
+    color: colors.textMuted,
     fontSize: 14,
   },
 });

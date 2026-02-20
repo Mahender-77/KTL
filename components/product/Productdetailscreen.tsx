@@ -14,6 +14,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Variant, Product } from "@/assets/types/product";
 import { SCREEN_PADDING } from "@/constants/layout";
+import { colors } from "@/constants/colors";
+
 
 const { width: SW } = Dimensions.get("window");
 const SIMILAR_W = SW * 0.46;
@@ -25,7 +27,52 @@ function getDiscount(v: Variant): number | null {
 }
 function vLabel(v: Variant) { return `${v.value} ${v.unit}`; }
 
-// ─── Similar Card ─────────────────────────────────────────────────────────────
+// ─── Dummy similar products for testing ───────────────────────────────────────
+const DUMMY_SIMILAR = [
+  { _id: "d1", name: "Fresh Tomatoes", image: "", price: 49, offerPrice: 39 },
+  { _id: "d2", name: "Green Capsicum", image: "", price: 60, offerPrice: null },
+  { _id: "d3", name: "Baby Spinach", image: "", price: 35, offerPrice: 29 },
+  { _id: "d4", name: "Red Onion", image: "", price: 55, offerPrice: 45 },
+];
+
+// ─── Similar Card (dummy version) ─────────────────────────────────────────────
+function DummySimilarCard({ item }: { item: typeof DUMMY_SIMILAR[0] }) {
+  const pct = item.offerPrice
+    ? Math.round(((item.price - item.offerPrice) / item.price) * 100)
+    : null;
+  const displayPrice = item.offerPrice ?? item.price;
+
+  return (
+    <View style={sc.card}>
+      {/* Image placeholder */}
+      <View style={sc.imgBox}>
+        <View style={sc.imgPlaceholder}>
+          <Ionicons name="leaf-outline" size={36} color={colors.primaryLight} />
+        </View>
+        {pct && (
+          <View style={sc.badge}>
+            <Text style={sc.badgeT}>{pct}% OFF</Text>
+          </View>
+        )}
+      </View>
+      <View style={sc.info}>
+        <Text style={sc.name} numberOfLines={2}>{item.name}</Text>
+        <Text style={sc.size}>500 g</Text>
+        <View style={sc.priceRow}>
+          {item.offerPrice && (
+            <Text style={sc.orig}>₹{item.price}</Text>
+          )}
+          <Text style={sc.price}>₹{displayPrice}</Text>
+        </View>
+        <TouchableOpacity style={sc.btn} activeOpacity={0.85}>
+          <Text style={sc.btnT}>+ Add</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+// ─── Real Similar Card ─────────────────────────────────────────────────────────
 function SimilarCard({ item }: { item: Product }) {
   const router = useRouter();
   const v = item.variants[0];
@@ -65,7 +112,7 @@ function SimilarCard({ item }: { item: Product }) {
 const sc = StyleSheet.create({
   card: {
     width: SIMILAR_W,
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
     borderRadius: 16,
     overflow: "hidden",
     elevation: 3,
@@ -73,28 +120,35 @@ const sc = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  imgBox: { width: "100%", aspectRatio: 1, backgroundColor: "#F4F1EC", overflow: "hidden" },
+  imgBox: { width: "100%", aspectRatio: 1, backgroundColor: colors.surface, overflow: "hidden" },
   img: { width: "100%", height: "100%" },
+  imgPlaceholder: {
+    width: "100%", height: "100%",
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: colors.surface,
+  },
   badge: {
     position: "absolute", top: 6, left: 6,
-    backgroundColor: "#FF6B35",
+    backgroundColor: colors.success,
     paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5,
   },
-  badgeT: { color: "#fff", fontSize: 9, fontWeight: "800" },
+  badgeT: { color: colors.card, fontSize: 9, fontWeight: "800" },
   info: { padding: 10 },
-  name: { fontSize: 12, fontWeight: "700", color: "#1A1A2E", lineHeight: 16, marginBottom: 4 },
+  name: { fontSize: 12, fontWeight: "700", color: colors.textPrimary, lineHeight: 16, marginBottom: 4 },
   size: {
-    fontSize: 10, fontWeight: "600", color: "#FF6B35",
-    backgroundColor: "#FFF3ED", alignSelf: "flex-start",
+    fontSize: 10, fontWeight: "600", color: colors.primary,
+    backgroundColor: colors.surface, alignSelf: "flex-start",
     paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4,
     marginBottom: 6, overflow: "hidden",
   },
   priceRow: { flexDirection: "row", alignItems: "baseline", gap: 4, marginBottom: 8 },
-  price: { fontSize: 14, fontWeight: "800", color: "#FF6B35" },
-  orig: { fontSize: 10, color: "#C0BDB8", textDecorationLine: "line-through" },
-  btn: { backgroundColor: "#1A1A2E", borderRadius: 8, paddingVertical: 7, alignItems: "center" },
-  btnT: { color: "#fff", fontSize: 11, fontWeight: "700" },
+  price: { fontSize: 14, fontWeight: "800", color: colors.primary },
+  orig: { fontSize: 10, color: colors.disabled, textDecorationLine: "line-through" },
+  btn: { backgroundColor: colors.primary, borderRadius: 8, paddingVertical: 7, alignItems: "center" },
+  btnT: { color: colors.card, fontSize: 11, fontWeight: "700" },
 });
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -124,18 +178,21 @@ export default function ProductDetailScreen({
   const total = price * qty;
   const images = product.images.length > 0 ? product.images : [""];
 
+  // Use real similar products if available, otherwise show dummies
+  const showDummy = similarProducts.length === 0;
+
   return (
     <View style={s.root}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-      {/* ════ SINGLE ROOT ScrollView — nothing else scrolls vertically ════ */}
+      {/* ── Single root ScrollView — owns ALL vertical scrolling ── */}
       <ScrollView
         style={s.scroll}
         contentContainerStyle={s.content}
         showsVerticalScrollIndicator={false}
         bounces
       >
-        {/* ── Hero image (horizontal ScrollView, not FlatList) ── */}
+        {/* ── Hero image ── */}
         <View style={s.heroBox}>
           <ScrollView
             horizontal
@@ -151,10 +208,8 @@ export default function ProductDetailScreen({
             ))}
           </ScrollView>
 
-          {/* Dark bottom fade */}
           <View style={s.heroFade} pointerEvents="none" />
 
-          {/* Dot indicators */}
           {images.length > 1 && (
             <View style={s.dots}>
               {images.map((_, i) => (
@@ -163,26 +218,22 @@ export default function ProductDetailScreen({
             </View>
           )}
 
-          {/* Floating buttons over image */}
           <View style={s.heroHeader}>
             <TouchableOpacity style={s.hBtn} onPress={onBack} activeOpacity={0.85}>
               <Ionicons name="arrow-back" size={18} color="#fff" />
             </TouchableOpacity>
             <View style={s.hRight}>
               <TouchableOpacity style={s.hBtn} onPress={() => setLiked(l => !l)} activeOpacity={0.85}>
-                <Ionicons name={liked ? "heart" : "heart-outline"} size={18}
-                  color={liked ? "#FF6B35" : "#fff"} />
+                <Ionicons
+                  name={liked ? "heart" : "heart-outline"}
+                  size={18}
+                  color={liked ? colors.error : "#fff"}
+                />
               </TouchableOpacity>
               <TouchableOpacity style={s.hBtn} activeOpacity={0.85}>
                 <Ionicons name="share-social-outline" size={18} color="#fff" />
               </TouchableOpacity>
             </View>
-          </View>
-
-          {/* Price overlay on image bottom-left */}
-          <View style={s.heroPrice}>
-            {orig && <Text style={s.heroPriceOrig}>₹{orig.toLocaleString()}</Text>}
-            <Text style={s.heroPriceMain}>₹{price.toLocaleString()}</Text>
           </View>
 
           {pct && (
@@ -192,10 +243,8 @@ export default function ProductDetailScreen({
           )}
         </View>
 
-        {/* ── White card slides up over image ── */}
+        {/* ── Main white card ── */}
         <View style={s.card}>
-
-          {/* Name row + stepper */}
           <View style={s.nameRow}>
             <Text style={s.name} numberOfLines={2}>{product.name}</Text>
             <View style={s.stepper}>
@@ -204,20 +253,18 @@ export default function ProductDetailScreen({
                 onPress={() => setQty(q => Math.max(1, q - 1))}
                 activeOpacity={0.8}
               >
-                <Ionicons name="remove" size={14} color={qty <= 1 ? "#CCC" : "#1A1A2E"} />
+                <Ionicons name="remove" size={14} color={qty <= 1 ? colors.disabled : colors.textPrimary} />
               </TouchableOpacity>
               <Text style={s.stepNum}>{qty}</Text>
               <TouchableOpacity style={s.stepBtn} onPress={() => setQty(q => q + 1)} activeOpacity={0.8}>
-                <Ionicons name="add" size={14} color="#1A1A2E" />
+                <Ionicons name="add" size={14} color={colors.textPrimary} />
               </TouchableOpacity>
             </View>
           </View>
 
-          {product.description ? (
-            <Text style={s.desc}>{product.description}</Text>
-          ) : null}
+          {product.description ? <Text style={s.desc}>{product.description}</Text> : null}
 
-          {/* ── Variant selector ── */}
+          {/* Variant selector */}
           <Text style={s.secLabel}>SELECT SIZE</Text>
           <ScrollView
             horizontal
@@ -244,7 +291,7 @@ export default function ProductDetailScreen({
             })}
           </ScrollView>
 
-          {/* ── Total + trust badges ── */}
+          {/* Total + trust */}
           <View style={s.totalBox}>
             <View style={s.totalLeft}>
               <Text style={s.totalLabel}>TOTAL</Text>
@@ -262,7 +309,7 @@ export default function ProductDetailScreen({
                 { icon: "shield-checkmark-outline", t: "Quality Assured" },
               ].map(c => (
                 <View key={c.t} style={s.trustRow}>
-                  <Ionicons name={c.icon as any} size={13} color="#FF6B35" />
+                  <Ionicons name={c.icon as any} size={13} color={colors.primary} />
                   <Text style={s.trustT}>{c.t}</Text>
                 </View>
               ))}
@@ -270,33 +317,37 @@ export default function ProductDetailScreen({
           </View>
         </View>
 
-        {/* ── Similar products — horizontal ScrollView (NOT FlatList) ── */}
-        {similarProducts.length > 0 && (
-          <View style={s.simSection}>
-            <View style={s.simHead}>
-              <View style={s.simBar} />
-              <Text style={s.simTitle}>You May Also Like</Text>
-            </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={s.simList}
-            >
-              {similarProducts.map(p => (
-                <SimilarCard key={p._id} item={p} />
-              ))}
-            </ScrollView>
+        {/* ── Similar products ── always visible (dummy if no real data) ── */}
+        <View style={s.simSection}>
+          <View style={s.simHead}>
+            <View style={s.simBar} />
+            <Text style={s.simTitle}>You May Also Like</Text>
+            {showDummy && (
+              <Text style={s.simDummyNote}>(demo)</Text>
+            )}
           </View>
-        )}
 
-        {/* Spacer — only enough for the sticky bar */}
-        <View style={{ height: 90 }} />
+          {/* Rendered as a plain horizontal row — NO nested ScrollView */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={s.simList}
+          >
+            {showDummy
+              ? DUMMY_SIMILAR.map(p => <DummySimilarCard key={p._id} item={p} />)
+              : similarProducts.map(p => <SimilarCard key={p._id} item={p} />)
+            }
+          </ScrollView>
+        </View>
+
+        {/* Spacer so content clears the sticky CTA (52 + 10 + 26 = 88px) */}
+        <View style={{ height: 100 }} />
       </ScrollView>
 
       {/* ── Sticky CTA ── */}
       <View style={s.cta}>
         <TouchableOpacity style={s.cartBtn} activeOpacity={0.85}>
-          <Ionicons name="cart-outline" size={18} color="#FF6B35" />
+          <Ionicons name="cart-outline" size={18} color={colors.primary} />
           <Text style={s.cartT}>Add to Cart</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -315,17 +366,12 @@ export default function ProductDetailScreen({
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F2EFE9" },
+  root: { flex: 1, backgroundColor: colors.background },
   scroll: { flex: 1 },
-  content: { flexGrow: 1 },      // ← flexGrow not fixed height — no phantom space
+  content: { flexGrow: 1 },
 
   // Hero
-  heroBox: {
-    width: SW,
-    height: SW * 0.9,
-    backgroundColor: "#E8E4DC",
-    overflow: "hidden",
-  },
+  heroBox: { width: SW, height: SW * 0.9, backgroundColor: colors.surface, overflow: "hidden" },
   heroImg: { width: SW, height: SW * 0.9 },
   heroFade: {
     position: "absolute", bottom: 0, left: 0, right: 0, height: 130,
@@ -348,27 +394,16 @@ const s = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.38)",
     alignItems: "center", justifyContent: "center",
   },
-  heroPrice: {
-    position: "absolute", bottom: 20, left: SCREEN_PADDING,
-    flexDirection: "row", alignItems: "baseline", gap: 8,
-  },
-  heroPriceOrig: {
-    fontSize: 15, color: "rgba(255,255,255,0.55)",
-    textDecorationLine: "line-through",
-  },
-  heroPriceMain: {
-    fontSize: 30, fontWeight: "900", color: "#fff", letterSpacing: -0.5,
-  },
   heroDiscount: {
     position: "absolute", bottom: 24, right: SCREEN_PADDING,
-    backgroundColor: "#FF6B35",
+    backgroundColor: colors.success,
     paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
   },
-  heroDiscountT: { color: "#fff", fontSize: 12, fontWeight: "800" },
+  heroDiscountT: { color: colors.card, fontSize: 12, fontWeight: "800" },
 
   // Main card
   card: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     marginTop: -22,
@@ -377,140 +412,118 @@ const s = StyleSheet.create({
     paddingBottom: 18,
   },
   nameRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 6,
-    gap: 8,
+    flexDirection: "row", justifyContent: "space-between",
+    alignItems: "flex-start", marginBottom: 6, gap: 8,
   },
   name: {
-    flex: 1,
-    fontSize: 21,
-    fontWeight: "800",
-    color: "#1A1A2E",
-    lineHeight: 27,
-    letterSpacing: -0.4,
+    flex: 1, fontSize: 28, fontWeight: "800",
+    color: colors.textPrimary, lineHeight: 34, letterSpacing: -0.4,
   },
   stepper: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F2EFE9",
-    borderRadius: 10,
-    padding: 3,
-    gap: 2,
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: colors.surface, borderRadius: 10, padding: 6, gap: 5,
   },
   stepBtn: {
     width: 30, height: 30, borderRadius: 8,
-    backgroundColor: "#fff",
-    alignItems: "center", justifyContent: "center",
-    elevation: 1,
+    backgroundColor: colors.card, alignItems: "center", justifyContent: "center",
+    elevation: 1, borderWidth: 1, borderColor: colors.border,
   },
-  stepOff: { backgroundColor: "#ECEAE6" },
+  stepOff: { backgroundColor: colors.surface },
   stepNum: {
-    fontSize: 15, fontWeight: "700", color: "#1A1A2E",
+    fontSize: 15, fontWeight: "700", color: colors.textPrimary,
     minWidth: 26, textAlign: "center",
   },
-  desc: {
-    fontSize: 13, color: "#999", lineHeight: 19, marginBottom: 16,
-  },
+  desc: { fontSize: 13, color: colors.textMuted, lineHeight: 19, marginBottom: 16 },
 
-  // Variant
+  // Variants
   secLabel: {
-    fontSize: 10, fontWeight: "700", color: "#BBB",
+    fontSize: 10, fontWeight: "700", color: colors.textMuted,
     letterSpacing: 1.2, marginBottom: 10,
   },
   varRow: { gap: 8, paddingBottom: 2, marginBottom: 16 },
   varChip: {
-    borderWidth: 1.5, borderColor: "#E4E1DB",
+    borderWidth: 1.5, borderColor: colors.border,
     borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10,
-    backgroundColor: "#FAFAF8", minWidth: 70, alignItems: "center",
+    backgroundColor: colors.surface, minWidth: 70, alignItems: "center",
     position: "relative",
   },
-  varChipOn: { borderColor: "#FF6B35", backgroundColor: "#FFF3ED" },
+  varChipOn: { borderColor: colors.primary, backgroundColor: colors.surface },
   varDot: {
     position: "absolute", top: 5, right: 5,
-    width: 6, height: 6, borderRadius: 3, backgroundColor: "#FF6B35",
+    width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primaryLight,
   },
-  varSize: { fontSize: 12, fontWeight: "700", color: "#555", marginBottom: 1 },
-  varSizeOn: { color: "#FF6B35" },
-  varPrice: { fontSize: 11, fontWeight: "500", color: "#999" },
-  varPriceOn: { color: "#FF6B35" },
+  varSize: { fontSize: 12, fontWeight: "700", color: colors.textSecondary, marginBottom: 1 },
+  varSizeOn: { color: colors.primary },
+  varPrice: { fontSize: 11, fontWeight: "500", color: colors.textMuted },
+  varPriceOn: { color: colors.primary },
 
   // Total box
   totalBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F9F7F3",
-    borderRadius: 16,
-    padding: 14,
-    justifyContent: "space-between",
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: colors.surface, borderRadius: 16,
+    padding: 14, justifyContent: "space-between",
+    borderWidth: 1, borderColor: colors.border,
   },
   totalLeft: { flex: 1 },
-  totalLabel: { fontSize: 10, color: "#BBB", fontWeight: "700", letterSpacing: 1, marginBottom: 2 },
-  totalPrice: { fontSize: 26, fontWeight: "900", color: "#FF6B35", letterSpacing: -0.5 },
-  saving: { fontSize: 11, color: "#4CAF7D", fontWeight: "600", marginTop: 2 },
+  totalLabel: {
+    fontSize: 10, color: colors.textMuted, fontWeight: "700",
+    letterSpacing: 1, marginBottom: 2,
+  },
+  totalPrice: { fontSize: 26, fontWeight: "900", color: colors.primary, letterSpacing: -0.5 },
+  saving: { fontSize: 11, color: colors.success, fontWeight: "600", marginTop: 2 },
   trustCol: { gap: 6 },
   trustRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  trustT: { fontSize: 11, color: "#777", fontWeight: "500" },
+  trustT: { fontSize: 11, color: colors.textSecondary, fontWeight: "500" },
 
-  // Similar
+  // Similar section
   simSection: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
     marginTop: 8,
-    paddingTop: 18,
+    paddingTop: 20,
     paddingBottom: 20,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.divider,
   },
   simHead: {
     flexDirection: "row", alignItems: "center",
-    paddingHorizontal: SCREEN_PADDING, marginBottom: 14, gap: 8,
+    paddingHorizontal: SCREEN_PADDING, marginBottom: 16, gap: 8,
   },
-  simBar: { width: 4, height: 18, backgroundColor: "#FF6B35", borderRadius: 2 },
-  simTitle: { fontSize: 17, fontWeight: "800", color: "#1A1A2E" },
-  simList: { paddingHorizontal: SCREEN_PADDING, gap: 10 },
+  simBar: { width: 4, height: 20, backgroundColor: colors.primary, borderRadius: 2 },
+  simTitle: { fontSize: 18, fontWeight: "800", color: colors.textPrimary, flex: 1 },
+  simDummyNote: { fontSize: 11, color: colors.textMuted, fontStyle: "italic" },
+  simList: { paddingHorizontal: SCREEN_PADDING, gap: 12 },
 
-  // CTA
+  // CTA bar
   cta: {
     position: "absolute",
     bottom: 0, left: 0, right: 0,
-    flexDirection: "row",
-    gap: 10,
+    flexDirection: "row", gap: 10,
     paddingHorizontal: SCREEN_PADDING,
-    paddingTop: 10,
-    paddingBottom: 26,
-    backgroundColor: "#fff",
-    borderTopWidth: 1, borderTopColor: "#EDEBE6",
+    paddingTop: 10, paddingBottom: 26,
+    backgroundColor: colors.card,
+    borderTopWidth: 1, borderTopColor: colors.divider,
     elevation: 14,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowOpacity: 0.08, shadowRadius: 8,
   },
   cartBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingHorizontal: 16,
-    height: 52,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: "#FF6B35",
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 6, paddingHorizontal: 16, height: 52,
+    borderRadius: 14, borderWidth: 2, borderColor: colors.primary,
   },
-  cartT: { fontSize: 13, fontWeight: "700", color: "#FF6B35" },
+  cartT: { fontSize: 13, fontWeight: "700", color: colors.primary },
   buyBtn: {
-    flex: 1,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: "#1A1A2E",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
+    flex: 1, height: 52, borderRadius: 14,
+    backgroundColor: colors.primary,
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
   },
-  buyT: { fontSize: 14, fontWeight: "700", color: "#fff" },
+  buyT: { fontSize: 14, fontWeight: "700", color: colors.card },
   buyDiv: {
     width: 1, height: 18,
-    backgroundColor: "rgba(255,255,255,0.25)",
+    backgroundColor: "rgba(255,255,255,0.35)",
     marginHorizontal: 12,
   },
-  buyPrice: { fontSize: 15, fontWeight: "900", color: "#fff", letterSpacing: -0.3 },
+  buyPrice: { fontSize: 15, fontWeight: "900", color: colors.card, letterSpacing: -0.3 },
 });

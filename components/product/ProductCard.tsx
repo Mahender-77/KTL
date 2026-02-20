@@ -6,11 +6,18 @@ import {
   Image,
   TouchableOpacity,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import { useState } from "react";
 import { useRouter } from "expo-router";
 import { Variant } from "@/assets/types/product";
 import { CARD_WIDTH } from "@/constants/layout";
+import { colors } from "@/constants/colors";
+
+import { Ionicons } from "@expo/vector-icons";
+import { useCart } from "@/context/CartContext";
+import Toast from "@/components/common/Toast";
+
 
 function variantLabel(v: Variant): string {
   return `${v.value}${v.unit}`;
@@ -22,7 +29,7 @@ function discountPercent(v: Variant): number | null {
 }
 
 type Props = {
-  id: string;           // ← product _id for navigation
+  id: string;
   name: string;
   images: string[];
   variants: Variant[];
@@ -41,21 +48,47 @@ export default function ProductCard({
   rating,
 }: Props) {
   const router = useRouter();
+  const { addToCart } = useCart();
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const selected = variants[selectedIdx];
+  const [addedIdx, setAddedIdx] = useState<number | null>(null); // tracks which variant was just added
+  const [adding, setAdding] = useState(false);
+  const [showToast, setShowToast] = useState(false);
 
+  const selected = variants[selectedIdx];
   const discount = selected ? discountPercent(selected) : null;
   const displayPrice = selected?.offerPrice ?? selected?.price ?? 0;
   const originalPrice = selected?.offerPrice ? selected.price : undefined;
 
-  const handleCardPress = () => {
-    // Navigate to detail page — Expo Router dynamic route
-    router.push({ pathname: "/product/[id]", params: { id } });
+  const handleAddToCart = async (e: any) => {
+    e.stopPropagation?.();
+    if (!selected?._id) return;
+
+    try {
+      setAdding(true);
+      await addToCart(id, selected._id);
+      setAddedIdx(selectedIdx);
+      setShowToast(true);
+      // Reset "Added" state after 2s
+      setTimeout(() => setAddedIdx(null), 2000);
+    } catch (err) {
+      console.log("Add to cart failed:", err);
+    } finally {
+      setAdding(false);
+    }
   };
 
+  const handleViewCart = () => {
+    router.push("/(tabs)/cart");
+  };
+
+  const isAdded = addedIdx === selectedIdx;
+
   return (
-    // ✅ Outer TouchableOpacity opens detail page
-    <TouchableOpacity style={styles.card} activeOpacity={0.93} onPress={handleCardPress}>
+    <TouchableOpacity
+      style={styles.card}
+      activeOpacity={0.93}
+      onPress={() => router.push({ pathname: "/product/[id]", params: { id } })}
+    >
       {/* ── Image ── */}
       <View style={styles.imageWrapper}>
         <Image
@@ -73,9 +106,10 @@ export default function ProductCard({
             <Text style={styles.badgeText}>{badge}</Text>
           </View>
         )}
-        <TouchableOpacity style={styles.wishlistBtn} activeOpacity={0.75}
-          // Stop propagation so wishlist tap doesn't open the detail page
-          onPress={(e) => { e.stopPropagation?.(); }}
+        <TouchableOpacity
+          style={styles.wishlistBtn}
+          activeOpacity={0.75}
+          onPress={(e) => e.stopPropagation?.()}
         >
           <Text style={styles.wishlistIcon}>♡</Text>
         </TouchableOpacity>
@@ -83,10 +117,14 @@ export default function ProductCard({
 
       {/* ── Body ── */}
       <View style={styles.body}>
-        <Text style={styles.name} numberOfLines={2}>{name}</Text>
+        <Text style={styles.name} numberOfLines={2}>
+          {name}
+        </Text>
 
         {description ? (
-          <Text style={styles.description} numberOfLines={2}>{description}</Text>
+          <Text style={styles.description} numberOfLines={2}>
+            {description}
+          </Text>
         ) : null}
 
         {rating != null && (
@@ -96,7 +134,7 @@ export default function ProductCard({
           </View>
         )}
 
-        {/* Variants + Price on same line */}
+        {/* Variants + Price */}
         <View style={styles.variantPriceRow}>
           <ScrollView
             horizontal
@@ -108,11 +146,18 @@ export default function ProductCard({
               <TouchableOpacity
                 key={v._id ?? String(i)}
                 style={[styles.pill, i === selectedIdx && styles.pillActive]}
-                // Stop propagation so pill tap doesn't open detail page
-                onPress={(e) => { e.stopPropagation?.(); setSelectedIdx(i); }}
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  setSelectedIdx(i);
+                }}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.pillText, i === selectedIdx && styles.pillTextActive]}>
+                <Text
+                  style={[
+                    styles.pillText,
+                    i === selectedIdx && styles.pillTextActive,
+                  ]}
+                >
                   {variantLabel(v)}
                 </Text>
               </TouchableOpacity>
@@ -121,21 +166,43 @@ export default function ProductCard({
 
           <View style={styles.priceBlock}>
             {originalPrice != null && (
-              <Text style={styles.originalPrice}>₹{originalPrice.toLocaleString()}</Text>
+              <Text style={styles.originalPrice}>
+                ₹{originalPrice.toLocaleString()}
+              </Text>
             )}
             <Text style={styles.price}>₹{displayPrice.toLocaleString()}</Text>
           </View>
         </View>
 
+        {/* Add to Cart button */}
         <TouchableOpacity
-          style={styles.addBtn}
+          style={[styles.addBtn, isAdded && styles.addBtnSuccess]}
           activeOpacity={0.85}
-          // Stop propagation so Add tap doesn't open detail page
-          onPress={(e) => { e.stopPropagation?.(); }}
+          onPress={handleAddToCart}
+          disabled={adding}
         >
-          <Text style={styles.addBtnText}>+ Add</Text>
+          {adding ? (
+            <ActivityIndicator size="small" color={colors.card} />
+          ) : isAdded ? (
+            <>
+              <Ionicons name="checkmark" size={14} color={colors.card} />
+              <Text style={styles.addBtnText}>Added!</Text>
+            </>
+          ) : (
+            <Text style={styles.addBtnText}>+ Add</Text>
+          )}
         </TouchableOpacity>
       </View>
+
+      {/* Toast Notification */}
+      <Toast
+        visible={showToast}
+        message={`${name} added to cart!`}
+        actionLabel="View Cart"
+        onAction={handleViewCart}
+        onDismiss={() => setShowToast(false)}
+        duration={5000}
+      />
     </TouchableOpacity>
   );
 }
@@ -143,7 +210,7 @@ export default function ProductCard({
 const styles = StyleSheet.create({
   card: {
     width: CARD_WIDTH,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.card,
     borderRadius: 14,
     overflow: "hidden",
     shadowColor: "#000",
@@ -151,11 +218,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 6,
     elevation: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   imageWrapper: {
     width: "100%",
     aspectRatio: 3 / 2,
-    backgroundColor: "#F4F1EC",
+    backgroundColor: colors.surface,
     overflow: "hidden",
   },
   image: { width: "100%", height: "100%" },
@@ -163,22 +232,22 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 6,
     left: 6,
-    backgroundColor: "#FF6B35",
+    backgroundColor: colors.success,
     paddingHorizontal: 5,
     paddingVertical: 2,
     borderRadius: 5,
   },
-  discountText: { color: "#fff", fontSize: 8, fontWeight: "800" },
+  discountText: { color: colors.card, fontSize: 8, fontWeight: "800" },
   badge: {
     position: "absolute",
     top: 6,
     right: 32,
-    backgroundColor: "#1A1A2E",
+    backgroundColor: colors.primaryDark,
     paddingHorizontal: 5,
     paddingVertical: 2,
     borderRadius: 5,
   },
-  badgeText: { color: "#fff", fontSize: 8, fontWeight: "700" },
+  badgeText: { color: colors.card, fontSize: 8, fontWeight: "700" },
   wishlistBtn: {
     position: "absolute",
     top: 5,
@@ -191,29 +260,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     elevation: 1,
   },
-  wishlistIcon: { fontSize: 12, color: "#FF6B35", lineHeight: 14 },
+  wishlistIcon: { fontSize: 12, color: colors.primary, lineHeight: 14 },
   body: { padding: 8 },
   name: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#1A1A2E",
+    color: colors.textPrimary,
     lineHeight: 20,
     marginBottom: 3,
   },
   description: {
     fontSize: 11,
-    color: "#999",
+    color: colors.textMuted,
     lineHeight: 15,
     marginBottom: 5,
-    fontWeight: "400",
   },
-  ratingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  star: { fontSize: 10, color: "#F5A623", marginRight: 2 },
-  ratingText: { fontSize: 10, color: "#888", fontWeight: "600" },
+  ratingRow: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
+  star: { fontSize: 10, color: colors.warning, marginRight: 2 },
+  ratingText: { fontSize: 10, color: colors.textMuted, fontWeight: "600" },
   variantPriceRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -226,20 +290,40 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#E4E1DC",
-    backgroundColor: "#F9F7F4",
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  pillActive: { backgroundColor: "#1A1A2E", borderColor: "#1A1A2E" },
-  pillText: { fontSize: 9, fontWeight: "600", color: "#777" },
-  pillTextActive: { color: "#fff" },
+  pillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  pillText: { fontSize: 9, fontWeight: "600", color: colors.textMuted },
+  pillTextActive: { color: colors.card },
   priceBlock: { alignItems: "flex-end", marginLeft: 6, flexShrink: 0 },
-  price: { fontSize: 16, fontWeight: "800", color: "#FF6B35", letterSpacing: -0.3 },
-  originalPrice: { fontSize: 9, color: "#BDBAB5", textDecorationLine: "line-through" },
+  price: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: colors.primary,
+    letterSpacing: -0.3,
+  },
+  originalPrice: {
+    fontSize: 9,
+    color: colors.disabled,
+    textDecorationLine: "line-through",
+  },
   addBtn: {
-    backgroundColor: "#1A1A2E",
+    backgroundColor: colors.primary,
     borderRadius: 8,
     paddingVertical: 10,
     alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 4,
   },
-  addBtnText: { color: "#fff", fontSize: 14, fontWeight: "700", letterSpacing: 0.5 },
+  addBtnSuccess: {
+    backgroundColor: colors.success,
+  },
+  addBtnText: {
+    color: colors.card,
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
 });
