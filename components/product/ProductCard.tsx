@@ -16,7 +16,10 @@ import { colors } from "@/constants/colors";
 
 import { Ionicons } from "@expo/vector-icons";
 import { useCart } from "@/context/CartContext";
+import { useWishlist } from "@/context/WishlistContext";
+import { useAuth } from "@/context/AuthContext";
 import Toast from "@/components/common/Toast";
+import { Alert } from "react-native";
 
 
 function variantLabel(v: Variant): string {
@@ -49,10 +52,20 @@ export default function ProductCard({
 }: Props) {
   const router = useRouter();
   const { addToCart } = useCart();
+  const { isInWishlist, addToWishlist, removeFromWishlist, loading: wishlistLoading } = useWishlist();
+  const { isAuthenticated } = useAuth();
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [addedIdx, setAddedIdx] = useState<number | null>(null); // tracks which variant was just added
   const [adding, setAdding] = useState(false);
   const [showToast, setShowToast] = useState(false);
+  
+  const isWishlisted = isInWishlist(id);
+
+  // Safety check: ensure we have valid variants
+  if (!variants || variants.length === 0) {
+    console.warn(`Product ${id} has no variants`);
+    return null;
+  }
 
   const selected = variants[selectedIdx];
   const discount = selected ? discountPercent(selected) : null;
@@ -79,6 +92,26 @@ export default function ProductCard({
 
   const handleViewCart = () => {
     router.push("/(tabs)/cart");
+  };
+
+  const handleToggleWishlist = async (e: any) => {
+    e.stopPropagation?.();
+    
+    if (!isAuthenticated) {
+      Alert.alert("Login Required", "Please login to add items to your wishlist");
+      return;
+    }
+
+    try {
+      if (isWishlisted) {
+        await removeFromWishlist(id);
+      } else {
+        await addToWishlist(id);
+      }
+    } catch (err: any) {
+      console.log("Wishlist toggle error:", err);
+      // Error is already handled in context
+    }
   };
 
   const isAdded = addedIdx === selectedIdx;
@@ -109,9 +142,14 @@ export default function ProductCard({
         <TouchableOpacity
           style={styles.wishlistBtn}
           activeOpacity={0.75}
-          onPress={(e) => e.stopPropagation?.()}
+          onPress={handleToggleWishlist}
+          disabled={wishlistLoading}
         >
-          <Text style={styles.wishlistIcon}>♡</Text>
+          <Ionicons
+            name={isWishlisted ? "heart" : "heart-outline"}
+            size={14}
+            color={isWishlisted ? colors.error : colors.primary}
+          />
         </TouchableOpacity>
       </View>
 
@@ -260,7 +298,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     elevation: 1,
   },
-  wishlistIcon: { fontSize: 12, color: colors.primary, lineHeight: 14 },
   body: { padding: 8 },
   name: {
     fontSize: 15,

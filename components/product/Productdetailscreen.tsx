@@ -9,12 +9,15 @@ import {
   Dimensions,
   StatusBar,
 } from "react-native";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Variant, Product } from "@/assets/types/product";
 import { SCREEN_PADDING } from "@/constants/layout";
 import { colors } from "@/constants/colors";
+import { useWishlist } from "@/context/WishlistContext";
+import { useAuth } from "@/context/AuthContext";
+import { Alert } from "react-native";
 
 
 const { width: SW } = Dimensions.get("window");
@@ -166,10 +169,13 @@ export default function ProductDetailScreen({
   onBack,
   onAddToCart,
 }: Props) {
+  const { isInWishlist, addToWishlist, removeFromWishlist, loading: wishlistLoading } = useWishlist();
+  const { isAuthenticated } = useAuth();
   const [varIdx, setVarIdx] = useState(0);
   const [qty, setQty] = useState(1);
-  const [liked, setLiked] = useState(false);
   const [imgIdx, setImgIdx] = useState(0);
+  
+  const liked = isInWishlist(product._id);
 
   const v = product.variants[varIdx];
   const pct = v ? getDiscount(v) : null;
@@ -180,6 +186,24 @@ export default function ProductDetailScreen({
 
   // Use real similar products if available, otherwise show dummies
   const showDummy = similarProducts.length === 0;
+
+  const handleToggleWishlist = async () => {
+    if (!isAuthenticated) {
+      Alert.alert("Login Required", "Please login to add items to your wishlist");
+      return;
+    }
+
+    try {
+      if (liked) {
+        await removeFromWishlist(product._id);
+      } else {
+        await addToWishlist(product._id);
+      }
+    } catch (err: any) {
+      console.log("Wishlist toggle error:", err);
+      // Error is already handled in context
+    }
+  };
 
   return (
     <View style={s.root}>
@@ -223,7 +247,12 @@ export default function ProductDetailScreen({
               <Ionicons name="arrow-back" size={18} color="#fff" />
             </TouchableOpacity>
             <View style={s.hRight}>
-              <TouchableOpacity style={s.hBtn} onPress={() => setLiked(l => !l)} activeOpacity={0.85}>
+              <TouchableOpacity
+                style={s.hBtn}
+                onPress={handleToggleWishlist}
+                activeOpacity={0.85}
+                disabled={wishlistLoading}
+              >
                 <Ionicons
                   name={liked ? "heart" : "heart-outline"}
                   size={18}
