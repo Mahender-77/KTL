@@ -5,6 +5,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { View, ActivityIndicator } from "react-native";
 import { colors } from "@/constants/colors";
 import { CartProvider } from "@/context/CartContext";
+import { WishlistProvider } from "@/context/WishlistContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axiosInstance from "@/constants/api/axiosInstance";
 
@@ -32,9 +33,12 @@ function RootNavigation() {
             const inDeliveryGroup = segments[0] === "(delivery)";
             const inTabsGroup = segments[0] === "(tabs)";
             
+            // Admin and user are treated the same - both go to tabs
+            const isUserOrAdmin = role === "user" || role === "admin";
+            
             if (role === "delivery" && !inDeliveryGroup && !inAuthGroup) {
               router.replace("/(delivery)/dashboard");
-            } else if (role === "user" && !inTabsGroup && !inAuthGroup && !inDeliveryGroup && segments[0] !== "orders" && segments[0] !== "checkout" && segments[0] !== "product") {
+            } else if (isUserOrAdmin && !inTabsGroup && !inAuthGroup && !inDeliveryGroup && segments[0] !== "orders" && segments[0] !== "checkout" && segments[0] !== "product") {
               router.replace("/(tabs)");
             }
           }
@@ -83,7 +87,9 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <CartProvider>
-        <RootNavigation />
+        <WishlistProvider>
+          <RootNavigation />
+        </WishlistProvider>
       </CartProvider>
     </AuthProvider>
   );

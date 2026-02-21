@@ -72,23 +72,36 @@ export default function OrdersScreen() {
   const [showMap, setShowMap] = useState(false);
   const [mapLoading, setMapLoading] = useState(false);
 
-  const fetchOrders = async () => {
+  const fetchOrders = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       const res = await axiosInstance.get("/api/orders");
       setOrders(res.data || []);
     } catch (err) {
       console.log("Fetch orders error:", err);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
   useFocusEffect(
     useCallback(() => {
-      fetchOrders();
+      fetchOrders(true); // Show loading on focus
     }, [])
   );
+
+  // Poll orders every 5 seconds to get real-time updates (without showing loading)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchOrders(false); // Don't show loading on background refresh
+    }, 5000); // Refresh every 5 seconds
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch tracking data with polling every 3 seconds
   useEffect(() => {

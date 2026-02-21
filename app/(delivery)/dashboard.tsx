@@ -21,7 +21,7 @@ import { colors } from "@/constants/colors";
 import { SCREEN_PADDING } from "@/constants/layout";
 import { useAuth } from "@/context/AuthContext";
 
-interface OrderItem {
+interface SubOrderItem {
   product: {
     _id: string;
     name: string;
@@ -32,51 +32,59 @@ interface OrderItem {
   price: number;
 }
 
-interface Order {
+interface SubOrder {
   _id: string;
-  items: OrderItem[];
-  totalAmount: number;
-  orderStatus: "placed" | "shipped" | "delivered" | "cancelled";
-  deliveryStatus: "assigned" | "accepted" | "in-transit" | "delivered" | null;
-  user: {
+  order: {
+    _id: string;
+    user: {
+      _id: string;
+      name: string;
+      email: string;
+      phone?: string;
+    };
+    address: {
+      name: string;
+      phone: string;
+      address: string;
+      city: string;
+      pincode: string;
+      landmark?: string;
+    };
+    createdAt: string;
+  };
+  category: {
     _id: string;
     name: string;
-    email: string;
-    phone?: string;
   };
-  address: {
-    name: string;
-    phone: string;
-    address: string;
-    city: string;
-    pincode: string;
-    landmark?: string;
-  };
+  categoryName: string;
+  items: SubOrderItem[];
+  totalAmount: number;
+  deliveryStatus: "pending" | "accepted" | "out_for_delivery" | "delivered";
+  deliveryBoyId: string | null;
   createdAt: string;
-  deliveryPerson: string | null;
 }
 
 export default function DeliveryDashboard() {
   const { logout } = useAuth();
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [subOrders, setSubOrders] = useState<SubOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
   const [locationTracking, setLocationTracking] = useState(false);
 
   // Navigate to delivery address
-  const handleNavigateToAddress = (order: Order) => {
-    const address = `${order.address.address}, ${order.address.city}, ${order.address.pincode}`;
+  const handleNavigateToAddress = (subOrder: SubOrder) => {
+    const address = `${subOrder.order.address.address}, ${subOrder.order.address.city}, ${subOrder.order.address.pincode}`;
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
     Linking.openURL(url);
   };
 
-  const fetchOrders = async () => {
+  const fetchSubOrders = async () => {
     try {
       setLoading(true);
-      const res = await axiosInstance.get("/api/delivery/orders");
-      setOrders(res.data || []);
+      const res = await axiosInstance.get("/api/delivery/suborders");
+      setSubOrders(res.data || []);
     } catch (err) {
-      console.log("Fetch orders error:", err);
+      console.log("Fetch suborders error:", err);
     } finally {
       setLoading(false);
     }
@@ -84,7 +92,7 @@ export default function DeliveryDashboard() {
 
   useFocusEffect(
     useCallback(() => {
-      fetchOrders();
+      fetchSubOrders();
     }, [])
   );
 
@@ -120,25 +128,25 @@ export default function DeliveryDashboard() {
     };
   }, [locationTracking]);
 
-  const handleAccept = async (orderId: string) => {
+  const handleAccept = async (subOrderId: string) => {
     try {
-      setUpdating(orderId);
-      await axiosInstance.post(`/api/delivery/orders/${orderId}/accept`);
-      await fetchOrders();
-      Alert.alert("Success", "Order accepted successfully");
+      setUpdating(subOrderId);
+      await axiosInstance.post(`/api/delivery/suborders/${subOrderId}/accept`);
+      await fetchSubOrders();
+      Alert.alert("Success", "SubOrder accepted successfully");
     } catch (err: any) {
-      Alert.alert("Error", err.response?.data?.message || "Failed to accept order");
+      Alert.alert("Error", err.response?.data?.message || "Failed to accept suborder");
     } finally {
       setUpdating(null);
     }
   };
 
-  const handleStartDelivery = async (orderId: string) => {
+  const handleStartDelivery = async (subOrderId: string) => {
     try {
-      setUpdating(orderId);
-      await axiosInstance.post(`/api/delivery/orders/${orderId}/start-delivery`);
+      setUpdating(subOrderId);
+      await axiosInstance.post(`/api/delivery/suborders/${subOrderId}/start-delivery`);
       setLocationTracking(true);
-      await fetchOrders();
+      await fetchSubOrders();
       Alert.alert("Success", "Delivery started. Your location is being tracked.");
     } catch (err: any) {
       Alert.alert("Error", err.response?.data?.message || "Failed to start delivery");
@@ -147,21 +155,21 @@ export default function DeliveryDashboard() {
     }
   };
 
-  const handleComplete = async (orderId: string) => {
+  const handleComplete = async (subOrderId: string) => {
     Alert.alert(
       "Complete Delivery",
-      "Are you sure you have delivered this order?",
+      "Are you sure you have delivered this suborder?",
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Complete",
           onPress: async () => {
             try {
-              setUpdating(orderId);
-              await axiosInstance.post(`/api/delivery/orders/${orderId}/complete`);
+              setUpdating(subOrderId);
+              await axiosInstance.post(`/api/delivery/suborders/${subOrderId}/complete`);
               setLocationTracking(false);
-              await fetchOrders();
-              Alert.alert("Success", "Order marked as delivered");
+              await fetchSubOrders();
+              Alert.alert("Success", "SubOrder marked as delivered");
             } catch (err: any) {
               Alert.alert("Error", err.response?.data?.message || "Failed to complete delivery");
             } finally {
@@ -173,16 +181,16 @@ export default function DeliveryDashboard() {
     );
   };
 
-  const getStatusColor = (status: string | null) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
       case "delivered":
         return colors.success;
-      case "in-transit":
+      case "out_for_delivery":
         return colors.primary;
       case "accepted":
         return colors.textMuted;
-      case "assigned":
-        return colors.textMuted;
+      case "pending":
+        return colors.border;
       default:
         return colors.border;
     }
@@ -197,9 +205,9 @@ export default function DeliveryDashboard() {
     });
   };
 
-  const availableOrders = orders.filter((o) => !o.deliveryPerson);
-  const myOrders = orders.filter(
-    (o) => o.deliveryPerson && o.deliveryStatus !== "delivered"
+  const availableSubOrders = subOrders.filter((so) => !so.deliveryBoyId);
+  const mySubOrders = subOrders.filter(
+    (so) => so.deliveryBoyId && so.deliveryStatus !== "delivered"
   );
 
   if (loading) {
@@ -242,34 +250,40 @@ export default function DeliveryDashboard() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* My Active Orders */}
-          {myOrders.length > 0 && (
+          {/* My Active SubOrders */}
+          {mySubOrders.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>My Active Orders</Text>
-              {myOrders.map((order) => (
-                <View key={order._id} style={styles.orderCard}>
+              <Text style={styles.sectionTitle}>My Active Deliveries</Text>
+              {mySubOrders.map((subOrder) => (
+                <View key={subOrder._id} style={styles.orderCard}>
                   <View style={styles.orderHeader}>
                     <View>
                       <Text style={styles.orderId}>
-                        Order #{order._id.slice(-8).toUpperCase()}
+                        SubOrder #{subOrder._id.slice(-8).toUpperCase()}
                       </Text>
-                      <Text style={styles.orderDate}>{formatDate(order.createdAt)}</Text>
+                      <Text style={styles.orderDate}>{formatDate(subOrder.createdAt)}</Text>
                     </View>
                     <View
                       style={[
                         styles.statusBadge,
-                        { backgroundColor: getStatusColor(order.deliveryStatus) + "20" },
+                        { backgroundColor: getStatusColor(subOrder.deliveryStatus) + "20" },
                       ]}
                     >
                       <Text
                         style={[
                           styles.statusText,
-                          { color: getStatusColor(order.deliveryStatus) },
+                          { color: getStatusColor(subOrder.deliveryStatus) },
                         ]}
                       >
-                        {order.deliveryStatus?.toUpperCase() || "ASSIGNED"}
+                        {subOrder.deliveryStatus.toUpperCase().replace("_", " ")}
                       </Text>
                     </View>
+                  </View>
+
+                  {/* Category Badge */}
+                  <View style={styles.categoryBadge}>
+                    <Ionicons name="pricetag" size={14} color={colors.primary} />
+                    <Text style={styles.categoryText}>{subOrder.categoryName || subOrder.category?.name}</Text>
                   </View>
 
                   {/* Customer Info */}
@@ -278,14 +292,14 @@ export default function DeliveryDashboard() {
                       <Ionicons name="person" size={16} color={colors.primary} />
                       <Text style={styles.customerTitle}>Customer Details</Text>
                     </View>
-                    <Text style={styles.customerText}>{order.user.name}</Text>
+                    <Text style={styles.customerText}>{subOrder.order.user.name}</Text>
                     <View style={styles.customerContactRow}>
-                      <Text style={styles.customerText}>{order.user.phone || order.user.email}</Text>
-                      {order.user.phone && (
+                      <Text style={styles.customerText}>{subOrder.order.user.phone || subOrder.order.user.email}</Text>
+                      {subOrder.order.user.phone && (
                         <TouchableOpacity
                           style={styles.callBtn}
                           onPress={() => {
-                            Linking.openURL(`tel:${order.user.phone}`);
+                            Linking.openURL(`tel:${subOrder.order.user.phone}`);
                           }}
                           activeOpacity={0.7}
                         >
@@ -305,25 +319,25 @@ export default function DeliveryDashboard() {
                       </View>
                       <TouchableOpacity
                         style={styles.navigateBtn}
-                        onPress={() => handleNavigateToAddress(order)}
+                        onPress={() => handleNavigateToAddress(subOrder)}
                         activeOpacity={0.7}
                       >
                         <Ionicons name="navigate" size={16} color={colors.primary} />
                         <Text style={styles.navigateBtnText}>Navigate</Text>
                       </TouchableOpacity>
                     </View>
-                    <Text style={styles.addressText}>{order.address.name}</Text>
-                    <Text style={styles.addressText}>{order.address.address}</Text>
+                    <Text style={styles.addressText}>{subOrder.order.address.name}</Text>
+                    <Text style={styles.addressText}>{subOrder.order.address.address}</Text>
                     <Text style={styles.addressText}>
-                      {order.address.city}, {order.address.pincode}
+                      {subOrder.order.address.city}, {subOrder.order.address.pincode}
                     </Text>
-                    {order.address.phone && (
+                    {subOrder.order.address.phone && (
                       <View style={styles.addressPhoneRow}>
-                        <Text style={styles.addressText}>Phone: {order.address.phone}</Text>
+                        <Text style={styles.addressText}>Phone: {subOrder.order.address.phone}</Text>
                         <TouchableOpacity
                           style={styles.callBtnSmall}
                           onPress={() => {
-                            Linking.openURL(`tel:${order.address.phone}`);
+                            Linking.openURL(`tel:${subOrder.order.address.phone}`);
                           }}
                           activeOpacity={0.7}
                         >
@@ -334,10 +348,10 @@ export default function DeliveryDashboard() {
                     )}
                   </View>
 
-                  {/* Order Items */}
+                  {/* SubOrder Items */}
                   <View style={styles.itemsSection}>
-                    <Text style={styles.itemsTitle}>Items ({order.items.length})</Text>
-                    {order.items.map((item, idx) => (
+                    <Text style={styles.itemsTitle}>Items ({subOrder.items.length})</Text>
+                    {subOrder.items.map((item, idx) => (
                       <View key={idx} style={styles.itemRow}>
                         <Image
                           source={{ uri: item.product?.images?.[0] ?? "" }}
@@ -358,13 +372,13 @@ export default function DeliveryDashboard() {
 
                   {/* Actions */}
                   <View style={styles.actions}>
-                    {order.deliveryStatus === "accepted" && (
+                    {subOrder.deliveryStatus === "accepted" && (
                       <TouchableOpacity
                         style={[styles.actionBtn, styles.startBtn]}
-                        onPress={() => handleStartDelivery(order._id)}
-                        disabled={updating === order._id}
+                        onPress={() => handleStartDelivery(subOrder._id)}
+                        disabled={updating === subOrder._id}
                       >
-                        {updating === order._id ? (
+                        {updating === subOrder._id ? (
                           <ActivityIndicator color="#fff" />
                         ) : (
                           <>
@@ -374,13 +388,13 @@ export default function DeliveryDashboard() {
                         )}
                       </TouchableOpacity>
                     )}
-                    {order.deliveryStatus === "in-transit" && (
+                    {subOrder.deliveryStatus === "out_for_delivery" && (
                       <TouchableOpacity
                         style={[styles.actionBtn, styles.completeBtn]}
-                        onPress={() => handleComplete(order._id)}
-                        disabled={updating === order._id}
+                        onPress={() => handleComplete(subOrder._id)}
+                        disabled={updating === subOrder._id}
                       >
-                        {updating === order._id ? (
+                        {updating === subOrder._id ? (
                           <ActivityIndicator color="#fff" />
                         ) : (
                           <>
@@ -390,71 +404,82 @@ export default function DeliveryDashboard() {
                         )}
                       </TouchableOpacity>
                     )}
-                    {!order.deliveryStatus && (
-                      <TouchableOpacity
-                        style={[styles.actionBtn, styles.acceptBtn]}
-                        onPress={() => handleAccept(order._id)}
-                        disabled={updating === order._id}
-                      >
-                        {updating === order._id ? (
-                          <ActivityIndicator color="#fff" />
-                        ) : (
-                          <>
-                            <Ionicons name="checkmark" size={16} color="#fff" />
-                            <Text style={styles.actionBtnText}>Accept Order</Text>
-                          </>
-                        )}
-                      </TouchableOpacity>
-                    )}
                   </View>
 
                   <View style={styles.totalRow}>
-                    <Text style={styles.totalLabel}>Total Amount:</Text>
-                    <Text style={styles.totalAmount}>₹{order.totalAmount.toLocaleString()}</Text>
+                    <Text style={styles.totalLabel}>Category Total:</Text>
+                    <Text style={styles.totalAmount}>₹{subOrder.totalAmount.toLocaleString()}</Text>
                   </View>
                 </View>
               ))}
             </View>
           )}
 
-          {/* Available Orders */}
-          {availableOrders.length > 0 && (
+          {/* Available SubOrders */}
+          {availableSubOrders.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Available Orders</Text>
-              {availableOrders.map((order) => (
-                <View key={order._id} style={styles.orderCard}>
+              <Text style={styles.sectionTitle}>Available Deliveries</Text>
+              {availableSubOrders.map((subOrder) => (
+                <View key={subOrder._id} style={styles.orderCard}>
                   <View style={styles.orderHeader}>
                     <View>
                       <Text style={styles.orderId}>
-                        Order #{order._id.slice(-8).toUpperCase()}
+                        SubOrder #{subOrder._id.slice(-8).toUpperCase()}
                       </Text>
-                      <Text style={styles.orderDate}>{formatDate(order.createdAt)}</Text>
+                      <Text style={styles.orderDate}>{formatDate(subOrder.createdAt)}</Text>
                     </View>
                   </View>
 
-                  <View style={styles.addressSection}>
-                    <Text style={styles.addressText}>{order.address.address}</Text>
-                    <Text style={styles.addressText}>
-                      {order.address.city}, {order.address.pincode}
-                    </Text>
+                  {/* Category Badge */}
+                  <View style={styles.categoryBadge}>
+                    <Ionicons name="pricetag" size={14} color={colors.primary} />
+                    <Text style={styles.categoryText}>{subOrder.categoryName || subOrder.category?.name}</Text>
+                  </View>
+
+                  {/* Customer Info */}
+                  <View style={styles.customerSection}>
+                    <Text style={styles.customerText}>{subOrder.order.user.name}</Text>
+                    <Text style={styles.customerText}>{subOrder.order.address.city}, {subOrder.order.address.pincode}</Text>
+                  </View>
+
+                  {/* Items Preview */}
+                  <View style={styles.itemsSection}>
+                    <Text style={styles.itemsTitle}>Items ({subOrder.items.length})</Text>
+                    {subOrder.items.slice(0, 2).map((item, idx) => (
+                      <View key={idx} style={styles.itemRow}>
+                        <Image
+                          source={{ uri: item.product?.images?.[0] ?? "" }}
+                          style={styles.itemImage}
+                        />
+                        <View style={styles.itemDetails}>
+                          <Text style={styles.itemName} numberOfLines={1}>
+                            {item.product?.name}
+                          </Text>
+                          <Text style={styles.itemQty}>Qty: {item.quantity}</Text>
+                        </View>
+                      </View>
+                    ))}
+                    {subOrder.items.length > 2 && (
+                      <Text style={styles.moreItemsText}>+{subOrder.items.length - 2} more items</Text>
+                    )}
                   </View>
 
                   <View style={styles.totalRow}>
-                    <Text style={styles.totalLabel}>Total:</Text>
-                    <Text style={styles.totalAmount}>₹{order.totalAmount.toLocaleString()}</Text>
+                    <Text style={styles.totalLabel}>Category Total:</Text>
+                    <Text style={styles.totalAmount}>₹{subOrder.totalAmount.toLocaleString()}</Text>
                   </View>
 
                   <TouchableOpacity
                     style={[styles.actionBtn, styles.acceptBtn]}
-                    onPress={() => handleAccept(order._id)}
-                    disabled={updating === order._id}
+                    onPress={() => handleAccept(subOrder._id)}
+                    disabled={updating === subOrder._id}
                   >
-                    {updating === order._id ? (
+                    {updating === subOrder._id ? (
                       <ActivityIndicator color="#fff" />
                     ) : (
                       <>
                         <Ionicons name="checkmark" size={16} color="#fff" />
-                        <Text style={styles.actionBtnText}>Accept Order</Text>
+                        <Text style={styles.actionBtnText}>Accept Delivery</Text>
                       </>
                     )}
                   </TouchableOpacity>
@@ -463,10 +488,10 @@ export default function DeliveryDashboard() {
             </View>
           )}
 
-          {orders.length === 0 && (
+          {subOrders.length === 0 && (
             <View style={styles.emptyContainer}>
               <Ionicons name="receipt-outline" size={64} color={colors.border} />
-              <Text style={styles.emptyText}>No orders available</Text>
+              <Text style={styles.emptyText}>No deliveries available</Text>
             </View>
           )}
         </ScrollView>
@@ -783,6 +808,28 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: colors.textMuted,
     marginTop: 16,
+  },
+  categoryBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.primary + "15",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+    marginBottom: 12,
+  },
+  categoryText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.primary,
+  },
+  moreItemsText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontStyle: "italic",
+    marginTop: 4,
   },
 });
 
