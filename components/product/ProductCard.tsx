@@ -1,29 +1,27 @@
 // components/product/ProductCard.tsx
+// Flipkart/Amazon-style card: uniform size, no Add to Cart (add from detail screen)
 import {
   View,
   Text,
   StyleSheet,
   Image,
   TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
+  Alert,
 } from "react-native";
-import { useState } from "react";
 import { useRouter } from "expo-router";
 import { Variant } from "@/assets/types/product";
-import { CARD_WIDTH } from "@/constants/layout";
+import { CARD_WIDTH, CARD_HEIGHT } from "@/constants/layout";
 import { colors } from "@/constants/colors";
-
 import { Ionicons } from "@expo/vector-icons";
-import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { useAuth } from "@/context/AuthContext";
-import Toast from "@/components/common/Toast";
-import { Alert } from "react-native";
 
+const EXPIRING_SOON_DAYS = 7;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function variantLabel(v: Variant): string {
-  return `${v.value}${v.unit}`;
+  return `${v.value} ${v.unit}`;
 }
 
 function discountPercent(v: Variant): number | null {
@@ -31,90 +29,84 @@ function discountPercent(v: Variant): number | null {
   return Math.round(((v.price - v.offerPrice) / v.price) * 100);
 }
 
+function isExpiringSoon(nearestExpiry: string | Date | null | undefined): boolean {
+  if (!nearestExpiry) return false;
+  const exp = new Date(nearestExpiry);
+  const daysLeft = (exp.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+  return daysLeft >= 0 && daysLeft < EXPIRING_SOON_DAYS;
+}
+
+function withTax(price: number, taxRate?: number | null): number {
+  if (!taxRate || taxRate <= 0) return price;
+  return price * (1 + taxRate / 100);
+}
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+
 type Props = {
   id: string;
   name: string;
   images: string[];
-  variants: Variant[];
+  pricingMode: "fixed" | "custom-weight" | "unit";
+  baseUnit: string;
+  pricePerUnit: number;
+  availableQuantity: number;
+  hasExpiry: boolean;
+  nearestExpiry?: string | Date | null;
+  variants?: Variant[];
   description?: string;
   badge?: string;
   rating?: number;
+  tags?: string[];
+  taxRate?: number | null;
+  minOrderQty?: number | null;
+  maxOrderQty?: number | null;
 };
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ProductCard({
   id,
   name,
   images,
-  variants,
-  description,
-  badge,
+  pricingMode,
+  baseUnit,
+  pricePerUnit,
+  hasExpiry,
+  nearestExpiry,
+  variants = [],
   rating,
+  taxRate,
 }: Props) {
   const router = useRouter();
-  const { addToCart } = useCart();
   const { isInWishlist, addToWishlist, removeFromWishlist, loading: wishlistLoading } = useWishlist();
   const { isAuthenticated } = useAuth();
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const [addedIdx, setAddedIdx] = useState<number | null>(null); // tracks which variant was just added
-  const [adding, setAdding] = useState(false);
-  const [showToast, setShowToast] = useState(false);
-  
+
+  const isFixed = pricingMode === "fixed";
+  const v = isFixed ? variants[0] : null;
+  const discount = v ? discountPercent(v) : null;
+  const basePrice = v ? (v.offerPrice ?? v.price) : pricePerUnit;
+  const displayPrice = withTax(basePrice, taxRate);
+  const originalPrice = v?.offerPrice ? withTax(v.price, taxRate) : null;
+  const showExpiringSoon = hasExpiry && isExpiringSoon(nearestExpiry);
   const isWishlisted = isInWishlist(id);
 
-  // Safety check: ensure we have valid variants
-  if (!variants || variants.length === 0) {
-    console.warn(`Product ${id} has no variants`);
-    return null;
-  }
-
-  const selected = variants[selectedIdx];
-  const discount = selected ? discountPercent(selected) : null;
-  const displayPrice = selected?.offerPrice ?? selected?.price ?? 0;
-  const originalPrice = selected?.offerPrice ? selected.price : undefined;
-
-  const handleAddToCart = async (e: any) => {
-    e.stopPropagation?.();
-    if (!selected?._id) return;
-
-    try {
-      setAdding(true);
-      await addToCart(id, selected._id);
-      setAddedIdx(selectedIdx);
-      setShowToast(true);
-      // Reset "Added" state after 2s
-      setTimeout(() => setAddedIdx(null), 2000);
-    } catch (err) {
-      console.log("Add to cart failed:", err);
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  const handleViewCart = () => {
-    router.push("/(tabs)/cart");
-  };
+  if (!id) return null;
+  if (isFixed && variants.length === 0) return null;
 
   const handleToggleWishlist = async (e: any) => {
     e.stopPropagation?.();
-    
     if (!isAuthenticated) {
       Alert.alert("Login Required", "Please login to add items to your wishlist");
       return;
     }
-
     try {
-      if (isWishlisted) {
-        await removeFromWishlist(id);
-      } else {
-        await addToWishlist(id);
-      }
-    } catch (err: any) {
+      if (isWishlisted) await removeFromWishlist(id);
+      else await addToWishlist(id);
+    } catch (err) {
       console.log("Wishlist toggle error:", err);
-      // Error is already handled in context
     }
   };
-
-  const isAdded = addedIdx === selectedIdx;
 
   return (
     <TouchableOpacity
@@ -124,21 +116,26 @@ export default function ProductCard({
     >
       {/* ── Image ── */}
       <View style={styles.imageWrapper}>
-        <Image
-          source={{ uri: images?.[0] ?? "" }}
-          style={styles.image}
-          resizeMode="cover"
-        />
-        {discount != null && (
-          <View style={styles.discountTag}>
+        {images && images.length > 0 && images[0] ? (
+          <Image source={{ uri: images[0] }} style={styles.image} resizeMode="cover" />
+        ) : (
+          <View style={[styles.image, styles.imagePlaceholder]}>
+            <Ionicons name="image-outline" size={32} color={colors.textMuted} />
+          </View>
+        )}
+
+        {isFixed && discount != null && (
+          <View style={styles.discountBadge}>
             <Text style={styles.discountText}>{discount}% OFF</Text>
           </View>
         )}
-        {badge && (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{badge}</Text>
+
+        {showExpiringSoon && (
+          <View style={styles.expiringBadge}>
+            <Text style={styles.badgeText}>Expiring Soon</Text>
           </View>
         )}
+
         <TouchableOpacity
           style={styles.wishlistBtn}
           activeOpacity={0.75}
@@ -148,219 +145,165 @@ export default function ProductCard({
           <Ionicons
             name={isWishlisted ? "heart" : "heart-outline"}
             size={14}
-            color={isWishlisted ? colors.error : colors.primary}
+            color={isWishlisted ? colors.error : "#666"}
           />
         </TouchableOpacity>
       </View>
 
-      {/* ── Body ── */}
+      {/* ── Body (Flipkart-style) ── */}
       <View style={styles.body}>
-        <Text style={styles.name} numberOfLines={2}>
-          {name}
-        </Text>
-
-        {description ? (
-          <Text style={styles.description} numberOfLines={2}>
-            {description}
-          </Text>
-        ) : null}
-
         {rating != null && (
-          <View style={styles.ratingRow}>
-            <Text style={styles.star}>★</Text>
+          <View style={styles.ratingBadge}>
+            <Text style={styles.ratingStar}>★</Text>
             <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
           </View>
         )}
 
-        {/* Variants + Price */}
-        <View style={styles.variantPriceRow}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.pillScroll}
-            contentContainerStyle={styles.pillContainer}
-          >
-            {variants.map((v, i) => (
-              <TouchableOpacity
-                key={v._id ?? String(i)}
-                style={[styles.pill, i === selectedIdx && styles.pillActive]}
-                onPress={(e) => {
-                  e.stopPropagation?.();
-                  setSelectedIdx(i);
-                }}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={[
-                    styles.pillText,
-                    i === selectedIdx && styles.pillTextActive,
-                  ]}
-                >
-                  {variantLabel(v)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+        <Text style={styles.name} numberOfLines={2}>{name}</Text>
 
-          <View style={styles.priceBlock}>
-            {originalPrice != null && (
-              <Text style={styles.originalPrice}>
-                ₹{originalPrice.toLocaleString()}
-              </Text>
-            )}
-            <Text style={styles.price}>₹{displayPrice.toLocaleString()}</Text>
-          </View>
-        </View>
+        {/* Weight/size — e.g. "1 kg" for fruits, "500g" for fixed variants */}
+        {isFixed && v && (
+          <Text style={styles.unitLabel}>{variantLabel(v)}</Text>
+        )}
 
-        {/* Add to Cart button */}
-        <TouchableOpacity
-          style={[styles.addBtn, isAdded && styles.addBtnSuccess]}
-          activeOpacity={0.85}
-          onPress={handleAddToCart}
-          disabled={adding}
-        >
-          {adding ? (
-            <ActivityIndicator size="small" color={colors.card} />
-          ) : isAdded ? (
-            <>
-              <Ionicons name="checkmark" size={14} color={colors.card} />
-              <Text style={styles.addBtnText}>Added!</Text>
-            </>
-          ) : (
-            <Text style={styles.addBtnText}>+ Add</Text>
+        <View style={styles.priceRow}>
+          {originalPrice != null && (
+            <Text style={styles.originalPrice}>
+              ₹{originalPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            </Text>
           )}
-        </TouchableOpacity>
+          <Text style={styles.price}>
+            ₹{displayPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            {(pricingMode === "custom-weight" || pricingMode === "unit") && ` / ${baseUnit}`}
+          </Text>
+        </View>
       </View>
-
-      {/* Toast Notification */}
-      <Toast
-        visible={showToast}
-        message={`${name} added to cart!`}
-        actionLabel="View Cart"
-        onAction={handleViewCart}
-        onDismiss={() => setShowToast(false)}
-        duration={5000}
-      />
     </TouchableOpacity>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   card: {
     width: CARD_WIDTH,
+    height: CARD_HEIGHT,
     backgroundColor: colors.card,
-    borderRadius: 14,
+    borderRadius: 8,
     overflow: "hidden",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
     elevation: 3,
     borderWidth: 1,
     borderColor: colors.border,
   },
   imageWrapper: {
     width: "100%",
-    aspectRatio: 3 / 2,
+    height: CARD_WIDTH,
     backgroundColor: colors.surface,
-    overflow: "hidden",
   },
-  image: { width: "100%", height: "100%" },
-  discountTag: {
+  image: {
+    width: "100%",
+    height: "100%",
+  },
+  imagePlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  discountBadge: {
     position: "absolute",
     top: 6,
     left: 6,
     backgroundColor: colors.success,
-    paddingHorizontal: 5,
+    paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 5,
+    borderRadius: 4,
   },
-  discountText: { color: colors.card, fontSize: 8, fontWeight: "800" },
-  badge: {
+  discountText: {
+    color: colors.card,
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  expiringBadge: {
     position: "absolute",
     top: 6,
-    right: 32,
-    backgroundColor: colors.primaryDark,
-    paddingHorizontal: 5,
+    left: 6,
+    backgroundColor: colors.warning,
+    paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 5,
+    borderRadius: 4,
   },
-  badgeText: { color: colors.card, fontSize: 8, fontWeight: "700" },
+  badgeText: {
+    color: colors.textPrimary,
+    fontSize: 9,
+    fontWeight: "700",
+  },
   wishlistBtn: {
     position: "absolute",
-    top: 5,
-    right: 5,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    top: 6,
+    right: 6,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: "rgba(255,255,255,0.95)",
     alignItems: "center",
     justifyContent: "center",
-    elevation: 1,
+    elevation: 2,
   },
-  body: { padding: 8 },
-  name: {
-    fontSize: 15,
+  body: {
+    flex: 1,
+    paddingHorizontal: 8,
+    paddingTop: 6,
+    paddingBottom: 8,
+    justifyContent: "space-between",
+  },
+  ratingBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "#E8F5E9",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginBottom: 4,
+  },
+  ratingStar: {
+    fontSize: 10,
+    color: colors.success,
+    marginRight: 2,
     fontWeight: "700",
-    color: colors.textPrimary,
-    lineHeight: 20,
-    marginBottom: 3,
   },
-  description: {
+  ratingText: {
+    fontSize: 10,
+    color: colors.textPrimary,
+    fontWeight: "700",
+  },
+  name: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.textPrimary,
+    lineHeight: 18,
+  },
+  unitLabel: {
     fontSize: 11,
     color: colors.textMuted,
-    lineHeight: 15,
-    marginBottom: 5,
+    marginTop: 1,
   },
-  ratingRow: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
-  star: { fontSize: 10, color: colors.warning, marginRight: 2 },
-  ratingText: { fontSize: 10, color: colors.textMuted, fontWeight: "600" },
-  variantPriceRow: {
+  priceRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
-  },
-  pillScroll: { flex: 1 },
-  pillContainer: { gap: 4, alignItems: "center" },
-  pill: {
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  pillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  pillText: { fontSize: 9, fontWeight: "600", color: colors.textMuted },
-  pillTextActive: { color: colors.card },
-  priceBlock: { alignItems: "flex-end", marginLeft: 6, flexShrink: 0 },
-  price: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: colors.primary,
-    letterSpacing: -0.3,
+    gap: 6,
   },
   originalPrice: {
-    fontSize: 9,
-    color: colors.disabled,
+    fontSize: 11,
+    color: colors.textMuted,
     textDecorationLine: "line-through",
   },
-  addBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 4,
-  },
-  addBtnSuccess: {
-    backgroundColor: colors.success,
-  },
-  addBtnText: {
-    color: colors.card,
+  price: {
     fontSize: 14,
-    fontWeight: "700",
-    letterSpacing: 0.5,
+    fontWeight: "800",
+    color: colors.primary,
   },
 });

@@ -52,7 +52,7 @@ export default function CategoryProducts({ selectedCategory, onBack }: Props) {
     try {
       setLoading(true);
       const res = await axiosInstance.get(`/api/products/public?category=${categoryId}`);
-      setProducts(res.data);
+      setProducts(res.data?.data ?? []);
     } catch (error) {
       console.log("Product fetch error:", error);
     } finally {

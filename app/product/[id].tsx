@@ -32,12 +32,14 @@ export default function ProductDetailRoute() {
       setProduct(fetched);
 
       try {
+        const catId = typeof fetched.category === "object" && fetched.category?._id
+          ? fetched.category._id
+          : (fetched.category ?? "");
         const simRes = await axiosInstance.get(
-          `/api/products/public?category=${fetched.category}&limit=10`
+          `/api/products/public?category=${catId}&limit=10`
         );
-        setSimilarProducts(
-          (simRes.data as Product[]).filter((p) => p._id !== productId)
-        );
+        const list = (simRes.data?.data ?? []) as Product[];
+        setSimilarProducts(list.filter((p) => p._id !== productId));
       } catch {
         setSimilarProducts([]);
       }

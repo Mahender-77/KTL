@@ -357,7 +357,9 @@ export default function CartScreen() {
       const productResponses = await Promise.allSettled(productPromises);
       productResponses.forEach((result) => {
         if (result.status === "fulfilled" && result.value.data?.category) {
-          categories.add(result.value.data.category);
+          const cat = result.value.data.category;
+          const catId = typeof cat === "object" && cat?._id ? cat._id : cat;
+          if (catId) categories.add(String(catId));
         }
       });
 
@@ -369,10 +371,10 @@ export default function CartScreen() {
         const res = await axiosInstance.get(
           `/api/products/public?category=${category}&limit=10`
         );
-        
+        const productList = (res.data?.data ?? []) as Product[];
         // Filter out products already in cart
         const cartProductIds = new Set(cartItems.map(item => item.product._id));
-        const filtered = (res.data as Product[]).filter(
+        const filtered = productList.filter(
           (p) => !cartProductIds.has(p._id)
         );
         

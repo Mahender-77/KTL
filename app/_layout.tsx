@@ -42,9 +42,13 @@ function RootNavigation() {
               router.replace("/(tabs)");
             }
           }
-        } catch (error) {
+        } catch (error: unknown) {
+          const status = (error as { response?: { status?: number } })?.response?.status;
           console.log("Failed to fetch user role:", error);
           setUserRole("user");
+          if (status === 401 || status === 404) {
+            setUserRole(null);
+          }
         } finally {
           setRoleLoading(false);
         }
