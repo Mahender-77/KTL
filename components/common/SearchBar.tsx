@@ -1,4 +1,4 @@
-import { View, TextInput, StyleSheet, TouchableOpacity, FlatList, Text } from "react-native";
+import { View, TextInput, StyleSheet, TouchableOpacity, FlatList, Text, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useState, useEffect, useRef } from "react";
 import { colors } from "@/constants/colors";
@@ -27,6 +27,9 @@ export default function SearchBar({
   const [query, setQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const inputRef = useRef<TextInput>(null);
+  const lastFocusTime = useRef<number>(0);
+  const refocusTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     // Clear previous timer
@@ -69,25 +72,48 @@ export default function SearchBar({
 
   const displaySuggestions = showSuggestions && isFocused && query.length > 0 && suggestions.length > 0;
 
+  // Android: keyboard often triggers a spurious blur when window pans/resizes. Refocus if blur happens soon after focus.
+  const handleFocus = () => {
+    lastFocusTime.current = Date.now();
+    setIsFocused(true);
+  };
+
+  const handleBlur = () => {
+    const timeSinceFocus = Date.now() - lastFocusTime.current;
+    const isLikelySpuriousBlur = Platform.OS === "android" && timeSinceFocus < 800;
+    if (isLikelySpuriousBlur) {
+      refocusTimeout.current = setTimeout(() => {
+        inputRef.current?.focus();
+        refocusTimeout.current = null;
+      }, 50);
+      return;
+    }
+    setTimeout(() => setIsFocused(false), 200);
+  };
+
+  useEffect(() => () => {
+    if (refocusTimeout.current) clearTimeout(refocusTimeout.current);
+  }, []);
+
   return (
-    <View style={styles.wrapper}>
-      <View style={[styles.container, isFocused && styles.containerFocused]}>
+    <View style={styles.wrapper} collapsable={false}>
+      <View style={[styles.container, isFocused && styles.containerFocused]} collapsable={false}>
         <Ionicons name="search-outline" size={20} color={isFocused ? colors.primary : "#999"} />
         <TextInput
+          ref={inputRef}
           placeholder="Search products, categories, or stores..."
           style={styles.input}
           placeholderTextColor="#999"
           value={query}
           onChangeText={setQuery}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => {
-            // Delay to allow suggestion press
-            setTimeout(() => setIsFocused(false), 200);
-          }}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
           editable={true}
           autoCorrect={false}
           autoCapitalize="none"
           returnKeyType="search"
+          blurOnSubmit={false}
+          keyboardType="default"
         />
         {query.length > 0 && (
           <TouchableOpacity onPress={handleClear} activeOpacity={0.7}>

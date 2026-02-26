@@ -17,3 +17,6 @@ export const CARD_GAP = 10;
 /** Width of each product card — fits 2 per row with SCREEN_PADDING on both sides */
 export const CARD_WIDTH =
   (SCREEN_WIDTH - SCREEN_PADDING * 2 - CARD_GAP) / 2;
+
+/** Fixed height for product cards — uniform grid like Flipkart/Amazon */
+export const CARD_HEIGHT = 248;

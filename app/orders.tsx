@@ -78,7 +78,7 @@ export default function OrdersScreen() {
         setLoading(true);
       }
       const res = await axiosInstance.get("/api/orders");
-      setOrders(res.data || []);
+      setOrders(res.data?.data ?? []);
     } catch (err) {
       console.log("Fetch orders error:", err);
     } finally {
