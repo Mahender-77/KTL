@@ -6,7 +6,6 @@ import { Product } from "@/assets/types/product";
 import { SCREEN_PADDING, CARD_GAP } from "@/constants/layout";
 import { colors } from "@/constants/colors";
 
-
 type Props = {
   products?: Product[];
   onRemove?: (productId: string) => void;
@@ -17,6 +16,7 @@ export default function ProductGrid({ products = [], onRemove, showRemoveButton 
   if (!products.length) {
     return (
       <View style={styles.emptyContainer}>
+        <Ionicons name="basket-outline" size={40} color={colors.disabled} style={{ marginBottom: 8 }} />
         <Text style={styles.emptyText}>No products available</Text>
       </View>
     );
@@ -25,19 +25,30 @@ export default function ProductGrid({ products = [], onRemove, showRemoveButton 
   return (
     <FlatList
       data={products}
-      keyExtractor={(item) => item._id}
+      keyExtractor={(item, index) => item._id ?? (item as any).id ?? `product-${index}`}
       numColumns={2}
       scrollEnabled={false}
       contentContainerStyle={styles.container}
       columnWrapperStyle={styles.row}
-      renderItem={({ item }) => (
+      renderItem={({ item, index }) => (
         <View style={showRemoveButton ? styles.cardWrapper : undefined}>
           <ProductCard
-            id={item._id}
+            id={item._id ?? (item as any).id ?? `product-${index}`}
             name={item.name}
-            images={item.images}
-            variants={item.variants}
+            images={item.images ?? []}
+            pricingMode={item.pricingMode ?? "unit"}
+            baseUnit={item.baseUnit ?? "pcs"}
+            pricePerUnit={item.pricePerUnit ?? 0}
+            availableQuantity={item.availableQuantity ?? 0}
+            hasExpiry={item.hasExpiry ?? false}
+            nearestExpiry={item.nearestExpiry}
+            variants={item.variants ?? []}
             description={item.description}
+            // ── new fields ──
+            tags={item.tags}
+            taxRate={item.taxRate}
+            minOrderQty={item.minOrderQty}
+            maxOrderQty={item.maxOrderQty}
           />
           {showRemoveButton && onRemove && (
             <TouchableOpacity
@@ -69,30 +80,20 @@ const styles = StyleSheet.create({
   },
   removeButton: {
     position: "absolute",
-    bottom: 8,
-    right: 8,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    bottom: 8, right: 8,
+    width: 36, height: 36, borderRadius: 18,
     backgroundColor: colors.error,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: "center", justifyContent: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-    zIndex: 10,
-    borderWidth: 2,
-    borderColor: colors.card,
+    shadowOpacity: 0.25, shadowRadius: 4,
+    elevation: 5, zIndex: 10,
+    borderWidth: 2, borderColor: colors.card,
   },
   emptyContainer: {
     paddingHorizontal: SCREEN_PADDING,
-    paddingVertical: 20,
+    paddingVertical: 40,
     alignItems: "center",
   },
-  emptyText: {
-    color: colors.textMuted,
-    fontSize: 14,
-  },
+  emptyText: { color: colors.textMuted, fontSize: 14 },
 });

@@ -25,9 +25,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         name: response.data.name,
         email: response.data.email,
       });
-    } catch (error) {
+    } catch (error: unknown) {
+      const status = (error as { response?: { status?: number } })?.response?.status;
       console.log("Failed to fetch user info:", error);
       setUser(null);
+      // 401/404 = invalid or expired token or user gone → clear session so user can log in again
+      if (status === 401 || status === 404) {
+        await AsyncStorage.removeItem("accessToken");
+        delete axiosInstance.defaults.headers.common["Authorization"];
+        setIsAuthenticated(false);
+      }
     }
   };
 

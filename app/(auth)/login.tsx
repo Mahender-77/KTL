@@ -29,13 +29,14 @@ export default function Login() {
   const [focusedField, setFocusedField] = useState<string | null>(null);
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      alert("Please fill in all fields");
+  
+    if (!email.trim() || !password) {
+      alert("Email and password are required");
       return;
     }
     try {
       setLoading(true);
-      await login(email, password);
+      await login(email.trim(), password);
       
       // Check user role and route accordingly
       // Admin and user are treated the same - both go to tabs
