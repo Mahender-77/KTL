@@ -19,13 +19,13 @@ export default function HomeShowcase({ featuredProducts, newArrivals }: Props) {
       {/* 🎯 Featured Section */}
       <View style={styles.section}>
         <SectionHeader title="🔥 Featured Products" />
-        <ProductGrid products={featuredProducts} />
+        <ProductGrid products={featuredProducts} responsive />
       </View>
 
       {/* 🆕 New Arrivals */}
       <View style={styles.section}>
         <SectionHeader title="🆕 New Arrivals" />
-        <ProductGrid products={newArrivals} />
+        <ProductGrid products={newArrivals} responsive />
       </View>
 
       {/* 💡 Platform Promotion */}

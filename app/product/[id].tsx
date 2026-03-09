@@ -1,8 +1,9 @@
 // app/product/[id].tsx
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { useEffect, useState } from "react";
-import { View, ActivityIndicator, StyleSheet, Text } from "react-native";
+import { View, StyleSheet, Text } from "react-native";
 import axiosInstance from "@/constants/api/axiosInstance";
+import Loader from "@/components/common/Loader";
 import { Product } from "@/assets/types/product";
 import ProductDetailScreen from "@/components/product/Productdetailscreen";
 // ✅ Match EXACT filename casing on disk
@@ -62,11 +63,7 @@ export default function ProductDetailRoute() {
         }}
       />
 
-      {loading && (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#FF6B35" />
-        </View>
-      )}
+      {loading && <Loader variant="fullscreen" message="Loading product..." />}
 
       {!loading && (error || !product) && (
         <View style={styles.center}>

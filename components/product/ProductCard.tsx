@@ -36,9 +36,9 @@ function isExpiringSoon(nearestExpiry: string | Date | null | undefined): boolea
   return daysLeft >= 0 && daysLeft < EXPIRING_SOON_DAYS;
 }
 
-function withTax(price: number, taxRate?: number | null): number {
-  if (!taxRate || taxRate <= 0) return price;
-  return price * (1 + taxRate / 100);
+/** Display price as whole number (no decimals). Tax is calculated at checkout. */
+function formatPrice(value: number): string {
+  return Math.floor(value).toLocaleString();
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -61,6 +61,9 @@ type Props = {
   taxRate?: number | null;
   minOrderQty?: number | null;
   maxOrderQty?: number | null;
+  /** Override card dimensions for responsive layouts */
+  cardWidth?: number;
+  cardHeight?: number;
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -77,17 +80,22 @@ export default function ProductCard({
   variants = [],
   rating,
   taxRate,
+  cardWidth: propCardWidth,
+  cardHeight: propCardHeight,
 }: Props) {
   const router = useRouter();
   const { isInWishlist, addToWishlist, removeFromWishlist, loading: wishlistLoading } = useWishlist();
   const { isAuthenticated } = useAuth();
+  const cardWidth = propCardWidth ?? CARD_WIDTH;
+  const cardHeight = propCardHeight ?? CARD_HEIGHT;
 
   const isFixed = pricingMode === "fixed";
   const v = isFixed ? variants[0] : null;
   const discount = v ? discountPercent(v) : null;
-  const basePrice = v ? (v.offerPrice ?? v.price) : pricePerUnit;
-  const displayPrice = withTax(basePrice, taxRate);
-  const originalPrice = v?.offerPrice ? withTax(v.price, taxRate) : null;
+  // Show price before tax; if no valid offer price (missing or 0), use original price
+  const hasValidOffer = v && v.offerPrice != null && v.offerPrice > 0 && v.offerPrice < v.price;
+  const basePrice = v ? (hasValidOffer ? v.offerPrice! : v.price) : pricePerUnit;
+  const originalPrice = hasValidOffer ? v.price : null;
   const showExpiringSoon = hasExpiry && isExpiringSoon(nearestExpiry);
   const isWishlisted = isInWishlist(id);
 
@@ -110,12 +118,12 @@ export default function ProductCard({
 
   return (
     <TouchableOpacity
-      style={styles.card}
+      style={[styles.card, { width: cardWidth, height: cardHeight }]}
       activeOpacity={0.93}
       onPress={() => router.push({ pathname: "/product/[id]", params: { id } })}
     >
       {/* ── Image ── */}
-      <View style={styles.imageWrapper}>
+      <View style={[styles.imageWrapper, { height: cardWidth * 0.82 }]}>
         {images && images.length > 0 && images[0] ? (
           <Image source={{ uri: images[0] }} style={styles.image} resizeMode="cover" />
         ) : (
@@ -161,20 +169,16 @@ export default function ProductCard({
 
         <Text style={styles.name} numberOfLines={2}>{name}</Text>
 
-        {/* Weight/size — e.g. "1 kg" for fruits, "500g" for fixed variants */}
-        {isFixed && v && (
-          <Text style={styles.unitLabel}>{variantLabel(v)}</Text>
-        )}
-
         <View style={styles.priceRow}>
           {originalPrice != null && (
             <Text style={styles.originalPrice}>
-              ₹{originalPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              ₹{formatPrice(originalPrice)}
             </Text>
           )}
           <Text style={styles.price}>
-            ₹{displayPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-            {(pricingMode === "custom-weight" || pricingMode === "unit") && ` / ${baseUnit}`}
+            ₹{formatPrice(basePrice)}
+            {pricingMode === "custom-weight" && ` / ${baseUnit}`}
+            {isFixed && v && ` / ${variantLabel(v)}`}
           </Text>
         </View>
       </View>
@@ -186,8 +190,6 @@ export default function ProductCard({
 
 const styles = StyleSheet.create({
   card: {
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
     backgroundColor: colors.card,
     borderRadius: 8,
     overflow: "hidden",
@@ -201,7 +203,6 @@ const styles = StyleSheet.create({
   },
   imageWrapper: {
     width: "100%",
-    height: CARD_WIDTH,
     backgroundColor: colors.surface,
   },
   image: {
@@ -255,9 +256,9 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     paddingHorizontal: 8,
-    paddingTop: 6,
-    paddingBottom: 8,
-    justifyContent: "space-between",
+    paddingTop: 4,
+    paddingBottom: 6,
+    justifyContent: "flex-start",
   },
   ratingBadge: {
     flexDirection: "row",
@@ -287,7 +288,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   unitLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: colors.textMuted,
     marginTop: 1,
   },

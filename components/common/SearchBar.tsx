@@ -2,6 +2,7 @@ import { View, TextInput, StyleSheet, TouchableOpacity, FlatList, Text, Platform
 import { Ionicons } from "@expo/vector-icons";
 import { useState, useEffect, useRef } from "react";
 import { colors } from "@/constants/colors";
+import { SCREEN_PADDING } from "@/constants/layout";
 
 export type SearchSuggestion = {
   id: string;
@@ -70,7 +71,8 @@ export default function SearchBar({
     }
   };
 
-  const displaySuggestions = showSuggestions && isFocused && query.length > 0 && suggestions.length > 0;
+  const shouldShowDropdown = showSuggestions && isFocused && query.length > 0;
+  const hasSuggestions = suggestions.length > 0;
 
   // Android: keyboard often triggers a spurious blur when window pans/resizes. Refocus if blur happens soon after focus.
   const handleFocus = () => {
@@ -123,42 +125,49 @@ export default function SearchBar({
       </View>
 
       {/* Suggestions Dropdown */}
-      {displaySuggestions && (
+      {shouldShowDropdown && (
         <View style={styles.suggestionsContainer}>
-          <FlatList
-            data={suggestions.slice(0, 8)} // Limit to 8 suggestions
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.suggestionItem}
-                onPress={() => handleSuggestionPress(item)}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name={
-                    item.type === "product"
-                      ? "cube-outline"
-                      : item.type === "store"
-                      ? "storefront-outline"
-                      : "grid-outline"
-                  }
-                  size={18}
-                  color={colors.primary}
-                />
-                <View style={styles.suggestionContent}>
-                  <Text style={styles.suggestionName}>{item.name}</Text>
-                  {item.type === "product" && item.categoryName && (
-                    <Text style={styles.suggestionCategory}>{item.categoryName}</Text>
-                  )}
-                  {item.type === "store" && item.storeName && (
-                    <Text style={styles.suggestionCategory}>{item.storeName}</Text>
-                  )}
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.disabled} />
-              </TouchableOpacity>
-            )}
-            nestedScrollEnabled
-          />
+          {hasSuggestions ? (
+            <FlatList
+              data={suggestions.slice(0, 8)} // Limit to 8 suggestions
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.suggestionItem}
+                  onPress={() => handleSuggestionPress(item)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={
+                      item.type === "product"
+                        ? "cube-outline"
+                        : item.type === "store"
+                        ? "storefront-outline"
+                        : "grid-outline"
+                    }
+                    size={18}
+                    color={colors.primary}
+                  />
+                  <View style={styles.suggestionContent}>
+                    <Text style={styles.suggestionName}>{item.name}</Text>
+                    {item.type === "product" && item.categoryName && (
+                      <Text style={styles.suggestionCategory}>{item.categoryName}</Text>
+                    )}
+                    {item.type === "store" && item.storeName && (
+                      <Text style={styles.suggestionCategory}>{item.storeName}</Text>
+                    )}
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.disabled} />
+                </TouchableOpacity>
+              )}
+              nestedScrollEnabled
+            />
+          ) : (
+            <View style={styles.noResultsItem}>
+              <Ionicons name="alert-circle-outline" size={18} color={colors.textMuted} />
+              <Text style={styles.noResultsText}>No results found</Text>
+            </View>
+          )}
         </View>
       )}
     </View>
@@ -179,7 +188,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     height: 45,
     marginVertical: 15,
-    marginHorizontal: 20,
+    marginHorizontal: SCREEN_PADDING,
     borderWidth: 1,
     borderColor: "transparent",
   },
@@ -203,8 +212,8 @@ const styles = StyleSheet.create({
   suggestionsContainer: {
     position: "absolute",
     top: 60,
-    left: 20,
-    right: 20,
+    left: SCREEN_PADDING,
+    right: SCREEN_PADDING,
     backgroundColor: colors.card,
     borderRadius: 12,
     maxHeight: 300,
@@ -238,5 +247,17 @@ const styles = StyleSheet.create({
   suggestionCategory: {
     fontSize: 11,
     color: colors.textMuted,
+  },
+  noResultsItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  noResultsText: {
+    fontSize: 13,
+    color: colors.textMuted,
+    fontStyle: "italic",
   },
 });
