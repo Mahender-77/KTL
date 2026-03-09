@@ -5,9 +5,9 @@ import {
   StyleSheet,
   ScrollView,
   StatusBar,
-  ActivityIndicator,
   RefreshControl,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useState, useEffect, useCallback } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useFocusEffect } from "expo-router";
@@ -19,8 +19,10 @@ import { SCREEN_PADDING } from "@/constants/layout";
 import { useAuth } from "@/context/AuthContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { Alert } from "react-native";
+import Loader from "@/components/common/Loader";
 
 export default function WishlistScreen() {
+  const insets = useSafeAreaInsets();
   const { isAuthenticated } = useAuth();
   const { refreshWishlist, totalItems, removeFromWishlist } = useWishlist();
   const [products, setProducts] = useState<Product[]>([]);
@@ -43,44 +45,40 @@ export default function WishlistScreen() {
       // Products are already fully populated from backend
       const formattedProducts: Product[] = wishlistProducts
         .filter((p: any) => {
-          // Filter out invalid products
           if (!p || !p._id) {
             console.warn("Invalid product in wishlist:", p);
             return false;
           }
-          // Ensure product has variants
-          if (!p.variants || !Array.isArray(p.variants) || p.variants.length === 0) {
-            console.warn(`Product ${p._id} (${p.name}) has no variants, skipping`);
-            return false;
-          }
           return true;
         })
-        .map((p: any): Product | null => {
-          // Ensure all variants have _id
-          const validVariants = p.variants.filter((v: any) => v && v._id);
-          if (validVariants.length === 0) {
-            console.warn(`Product ${p._id} has no valid variants with _id`);
-            return null;
-          }
+        .map((p: any): Product => {
+          const rawVariants = Array.isArray(p.variants) ? p.variants : [];
+          const validVariants = rawVariants
+            .filter((v: any) => v && v._id)
+            .map((v: any) => ({
+              _id: v._id.toString(),
+              type: v.type ?? "pieces",
+              value: v.value ?? 1,
+              unit: v.unit ?? "pcs",
+              price: v.price ?? 0,
+              offerPrice: v.offerPrice,
+              sku: v.sku,
+            }));
 
           return {
             _id: p._id.toString(),
             name: p.name || "",
             description: p.description || "",
             images: Array.isArray(p.images) ? p.images : [],
-            variants: validVariants.map((v: any) => ({
-              _id: v._id.toString(),
-              type: v.type,
-              value: v.value,
-              unit: v.unit,
-              price: v.price,
-              offerPrice: v.offerPrice,
-              sku: v.sku,
-            })),
+            variants: validVariants.length > 0 ? validVariants : [{ type: "pieces" as const, value: 1, unit: "pcs" as const, price: p.pricePerUnit ?? 0 }],
             category: p.category?._id ? p.category._id.toString() : (p.category || ""),
+            pricingMode: p.pricingMode ?? "unit",
+            baseUnit: p.baseUnit ?? "pcs",
+            pricePerUnit: Number(p.pricePerUnit) || 0,
+            hasExpiry: Boolean(p.hasExpiry),
+            availableQuantity: Number(p.availableQuantity) ?? 0,
           };
-        })
-        .filter((p: Product | null): p is Product => p !== null);
+        });
 
       setProducts(formattedProducts);
     } catch (err) {
@@ -165,7 +163,7 @@ export default function WishlistScreen() {
           <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} translucent={false} />
 
           {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
           <View style={styles.headerBlob} />
           <Text style={styles.headerTitle}>My Wishlist</Text>
           <Text style={styles.headerSubtitle}>
@@ -175,10 +173,7 @@ export default function WishlistScreen() {
 
         {/* Content */}
         {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Loading wishlist...</Text>
-          </View>
+          <Loader variant="fullscreen" message="Loading wishlist..." />
         ) : products.length === 0 ? (
           <ScrollView
             contentContainerStyle={styles.emptyScroll}
@@ -222,7 +217,6 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: colors.primaryDark,
-    paddingTop: 50,
     paddingBottom: 20,
     paddingHorizontal: SCREEN_PADDING,
     overflow: "hidden",

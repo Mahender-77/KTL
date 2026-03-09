@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import CategoryItem from "./CategoryItem";
 import axiosInstance from "@/constants/api/axiosInstance";
 import { Ionicons } from "@expo/vector-icons";
+import { SCREEN_PADDING } from "@/constants/layout";
 
 type Category = {
   _id: string;
@@ -53,7 +54,7 @@ export default function CategoriesList({ onSelectCategory }: Props) {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 20 }}
+        contentContainerStyle={{ paddingHorizontal: SCREEN_PADDING }}
       >
         {categories.map((item) => (
           <CategoryItem
