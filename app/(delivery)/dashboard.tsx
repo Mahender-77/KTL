@@ -10,6 +10,7 @@ import {
   Image,
   Alert,
 } from "react-native";
+import Loader from "@/components/common/Loader";
 import { useState, useCallback, useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { router, Stack } from "expo-router";
@@ -36,6 +37,9 @@ interface SubOrder {
   _id: string;
   order: {
     _id: string;
+    totalAmount?: number;
+    paymentStatus?: "pending" | "paid" | "failed";
+    orderStatus?: string;
     user: {
       _id: string;
       name: string;
@@ -73,7 +77,9 @@ export default function DeliveryDashboard() {
 
   // Navigate to delivery address
   const handleNavigateToAddress = (subOrder: SubOrder) => {
-    const address = `${subOrder.order.address.address}, ${subOrder.order.address.city}, ${subOrder.order.address.pincode}`;
+    const addr = subOrder.order?.address;
+    if (!addr) return;
+    const address = `${addr.address}, ${addr.city}, ${addr.pincode}`;
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
     Linking.openURL(url);
   };
@@ -82,7 +88,8 @@ export default function DeliveryDashboard() {
     try {
       setLoading(true);
       const res = await axiosInstance.get("/api/delivery/suborders");
-      setSubOrders(res.data || []);
+      const list = Array.isArray(res.data?.data) ? res.data.data : [];
+      setSubOrders(list);
     } catch (err) {
       console.log("Fetch suborders error:", err);
     } finally {
@@ -205,18 +212,14 @@ export default function DeliveryDashboard() {
     });
   };
 
-  const availableSubOrders = subOrders.filter((so) => !so.deliveryBoyId);
-  const mySubOrders = subOrders.filter(
+  const validSubOrders = subOrders.filter((so) => so?.order != null);
+  const availableSubOrders = validSubOrders.filter((so) => !so.deliveryBoyId);
+  const mySubOrders = validSubOrders.filter(
     (so) => so.deliveryBoyId && so.deliveryStatus !== "delivered"
   );
 
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Loading orders...</Text>
-      </View>
-    );
+    return <Loader variant="fullscreen" message="Loading orders..." />;
   }
 
   return (
@@ -261,6 +264,9 @@ export default function DeliveryDashboard() {
                       <Text style={styles.orderId}>
                         SubOrder #{subOrder._id.slice(-8).toUpperCase()}
                       </Text>
+                      {subOrder.order?._id && (
+                        <Text style={styles.orderRef}>Order #{subOrder.order._id.slice(-8).toUpperCase()}</Text>
+                      )}
                       <Text style={styles.orderDate}>{formatDate(subOrder.createdAt)}</Text>
                     </View>
                     <View
@@ -280,6 +286,21 @@ export default function DeliveryDashboard() {
                     </View>
                   </View>
 
+                  {/* Order Total & Payment */}
+                  {subOrder.order?.totalAmount != null && (
+                    <View style={styles.orderDetailsRow}>
+                      <Text style={styles.orderDetailsLabel}>Order Total:</Text>
+                      <Text style={styles.orderDetailsValue}>₹{subOrder.order.totalAmount.toLocaleString()}</Text>
+                      {subOrder.order.paymentStatus && (
+                        <View style={[styles.paymentBadge, subOrder.order.paymentStatus === "paid" && styles.paymentBadgePaid]}>
+                          <Text style={[styles.paymentBadgeText, subOrder.order.paymentStatus === "paid" && styles.paymentBadgeTextPaid]}>
+                            {subOrder.order.paymentStatus === "paid" ? "Paid" : subOrder.order.paymentStatus}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+
                   {/* Category Badge */}
                   <View style={styles.categoryBadge}>
                     <Ionicons name="pricetag" size={14} color={colors.primary} />
@@ -292,14 +313,14 @@ export default function DeliveryDashboard() {
                       <Ionicons name="person" size={16} color={colors.primary} />
                       <Text style={styles.customerTitle}>Customer Details</Text>
                     </View>
-                    <Text style={styles.customerText}>{subOrder.order.user.name}</Text>
+                    <Text style={styles.customerText}>{subOrder.order?.user?.name ?? "—"}</Text>
                     <View style={styles.customerContactRow}>
-                      <Text style={styles.customerText}>{subOrder.order.user.phone || subOrder.order.user.email}</Text>
-                      {subOrder.order.user.phone && (
+                      <Text style={styles.customerText}>{(subOrder.order?.user?.phone || subOrder.order?.user?.email) ?? "—"}</Text>
+                      {subOrder.order?.user?.phone && (
                         <TouchableOpacity
                           style={styles.callBtn}
                           onPress={() => {
-                            Linking.openURL(`tel:${subOrder.order.user.phone}`);
+                            Linking.openURL(`tel:${subOrder.order?.user?.phone}`);
                           }}
                           activeOpacity={0.7}
                         >
@@ -326,18 +347,18 @@ export default function DeliveryDashboard() {
                         <Text style={styles.navigateBtnText}>Navigate</Text>
                       </TouchableOpacity>
                     </View>
-                    <Text style={styles.addressText}>{subOrder.order.address.name}</Text>
-                    <Text style={styles.addressText}>{subOrder.order.address.address}</Text>
+                    <Text style={styles.addressText}>{subOrder.order?.address?.name ?? "—"}</Text>
+                    <Text style={styles.addressText}>{subOrder.order?.address?.address ?? "—"}</Text>
                     <Text style={styles.addressText}>
-                      {subOrder.order.address.city}, {subOrder.order.address.pincode}
+                      {subOrder.order?.address?.city ?? ""}, {subOrder.order?.address?.pincode ?? ""}
                     </Text>
-                    {subOrder.order.address.phone && (
+                    {subOrder.order?.address?.phone && (
                       <View style={styles.addressPhoneRow}>
-                        <Text style={styles.addressText}>Phone: {subOrder.order.address.phone}</Text>
+                        <Text style={styles.addressText}>Phone: {subOrder.order?.address?.phone}</Text>
                         <TouchableOpacity
                           style={styles.callBtnSmall}
                           onPress={() => {
-                            Linking.openURL(`tel:${subOrder.order.address.phone}`);
+                            Linking.openURL(`tel:${subOrder.order?.address?.phone}`);
                           }}
                           activeOpacity={0.7}
                         >
@@ -350,8 +371,8 @@ export default function DeliveryDashboard() {
 
                   {/* SubOrder Items */}
                   <View style={styles.itemsSection}>
-                    <Text style={styles.itemsTitle}>Items ({subOrder.items.length})</Text>
-                    {subOrder.items.map((item, idx) => (
+                    <Text style={styles.itemsTitle}>Items ({(subOrder.items ?? []).length})</Text>
+                    {(subOrder.items ?? []).map((item, idx) => (
                       <View key={idx} style={styles.itemRow}>
                         <Image
                           source={{ uri: item.product?.images?.[0] ?? "" }}
@@ -426,9 +447,27 @@ export default function DeliveryDashboard() {
                       <Text style={styles.orderId}>
                         SubOrder #{subOrder._id.slice(-8).toUpperCase()}
                       </Text>
+                      {subOrder.order?._id && (
+                        <Text style={styles.orderRef}>Order #{subOrder.order._id.slice(-8).toUpperCase()}</Text>
+                      )}
                       <Text style={styles.orderDate}>{formatDate(subOrder.createdAt)}</Text>
                     </View>
                   </View>
+
+                  {/* Order Total & Payment */}
+                  {subOrder.order?.totalAmount != null && (
+                    <View style={styles.orderDetailsRow}>
+                      <Text style={styles.orderDetailsLabel}>Order Total:</Text>
+                      <Text style={styles.orderDetailsValue}>₹{subOrder.order.totalAmount.toLocaleString()}</Text>
+                      {subOrder.order.paymentStatus && (
+                        <View style={[styles.paymentBadge, subOrder.order.paymentStatus === "paid" && styles.paymentBadgePaid]}>
+                          <Text style={[styles.paymentBadgeText, subOrder.order.paymentStatus === "paid" && styles.paymentBadgeTextPaid]}>
+                            {subOrder.order.paymentStatus === "paid" ? "Paid" : subOrder.order.paymentStatus}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
 
                   {/* Category Badge */}
                   <View style={styles.categoryBadge}>
@@ -438,14 +477,14 @@ export default function DeliveryDashboard() {
 
                   {/* Customer Info */}
                   <View style={styles.customerSection}>
-                    <Text style={styles.customerText}>{subOrder.order.user.name}</Text>
-                    <Text style={styles.customerText}>{subOrder.order.address.city}, {subOrder.order.address.pincode}</Text>
+                    <Text style={styles.customerText}>{subOrder.order?.user?.name ?? "—"}</Text>
+                    <Text style={styles.customerText}>{subOrder.order?.address?.city ?? ""}, {subOrder.order?.address?.pincode ?? ""}</Text>
                   </View>
 
                   {/* Items Preview */}
                   <View style={styles.itemsSection}>
-                    <Text style={styles.itemsTitle}>Items ({subOrder.items.length})</Text>
-                    {subOrder.items.slice(0, 2).map((item, idx) => (
+                    <Text style={styles.itemsTitle}>Items ({(subOrder.items ?? []).length})</Text>
+                    {(subOrder.items ?? []).slice(0, 2).map((item, idx) => (
                       <View key={idx} style={styles.itemRow}>
                         <Image
                           source={{ uri: item.product?.images?.[0] ?? "" }}
@@ -459,8 +498,8 @@ export default function DeliveryDashboard() {
                         </View>
                       </View>
                     ))}
-                    {subOrder.items.length > 2 && (
-                      <Text style={styles.moreItemsText}>+{subOrder.items.length - 2} more items</Text>
+                    {(subOrder.items ?? []).length > 2 && (
+                      <Text style={styles.moreItemsText}>+{(subOrder.items ?? []).length - 2} more items</Text>
                     )}
                   </View>
 
@@ -488,7 +527,7 @@ export default function DeliveryDashboard() {
             </View>
           )}
 
-          {subOrders.length === 0 && (
+          {availableSubOrders.length === 0 && mySubOrders.length === 0 && (
             <View style={styles.emptyContainer}>
               <Ionicons name="receipt-outline" size={64} color={colors.border} />
               <Text style={styles.emptyText}>No deliveries available</Text>
@@ -593,6 +632,51 @@ const styles = StyleSheet.create({
   orderDate: {
     fontSize: 12,
     color: colors.textMuted,
+  },
+  orderRef: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginBottom: 2,
+  },
+  orderDetailsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  orderDetailsLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.textMuted,
+  },
+  orderDetailsValue: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: colors.primary,
+    flex: 1,
+  },
+  paymentBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: colors.border + "40",
+  },
+  paymentBadgePaid: {
+    backgroundColor: colors.success + "25",
+  },
+  paymentBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: colors.textMuted,
+  },
+  paymentBadgeTextPaid: {
+    color: colors.success,
   },
   statusBadge: {
     paddingHorizontal: 10,

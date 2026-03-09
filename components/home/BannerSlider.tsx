@@ -1,17 +1,19 @@
 import {
   FlatList,
   Image,
-  Dimensions,
+  useWindowDimensions,
   View,
   StyleSheet,
 } from "react-native";
 import { useEffect, useRef, useState } from "react";
-
-const { width } = Dimensions.get("window");
+import { SCREEN_PADDING } from "@/constants/layout";
 
 export default function BannerSlider() {
+  const { width } = useWindowDimensions();
   const flatListRef = useRef<FlatList>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const bannerWidth = width - SCREEN_PADDING * 2;
+  const bannerHeight = Math.max(140, Math.min(180, bannerWidth * 0.5));
 
   const banners = [
     {
@@ -51,6 +53,7 @@ export default function BannerSlider() {
   return (
     <View style={styles.wrapper}>
       <FlatList
+        key={`${bannerWidth}-${bannerHeight}`}
         ref={flatListRef}
         data={banners}
         horizontal
@@ -58,12 +61,12 @@ export default function BannerSlider() {
         showsHorizontalScrollIndicator={false}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <Image source={{ uri: item.image }} style={styles.banner} />
+          <View style={{ width }}>
+            <Image source={{ uri: item.image }} style={[styles.banner, { width: bannerWidth, height: bannerHeight, marginHorizontal: SCREEN_PADDING }]} />
+          </View>
         )}
         onMomentumScrollEnd={(event) => {
-          const index = Math.round(
-            event.nativeEvent.contentOffset.x / (width - 40)
-          );
+          const index = Math.round(event.nativeEvent.contentOffset.x / width);
           setCurrentIndex(index);
         }}
       />
@@ -76,9 +79,6 @@ const styles = StyleSheet.create({
     marginVertical: 15,
   },
   banner: {
-    width: width - 40,
-    height: 160,
     borderRadius: 15,
-    marginHorizontal: 20,
   },
 });

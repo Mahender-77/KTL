@@ -1,13 +1,16 @@
 // app/_layout.tsx
 import { AuthProvider, useAuth } from "@/context/AuthContext";
-import React from "react";
+import React, { useEffect } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
-import { View, ActivityIndicator } from "react-native";
-import { colors } from "@/constants/colors";
+import * as SplashScreen from "expo-splash-screen";
 import { CartProvider } from "@/context/CartContext";
 import { WishlistProvider } from "@/context/WishlistContext";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axiosInstance from "@/constants/api/axiosInstance";
+import Loader from "@/components/common/Loader";
+
+SplashScreen.preventAutoHideAsync();
 
 
 function RootNavigation() {
@@ -16,6 +19,10 @@ function RootNavigation() {
   const [roleLoading, setRoleLoading] = React.useState(true);
   const router = useRouter();
   const segments = useSegments();
+
+  useEffect(() => {
+    SplashScreen.hideAsync();
+  }, []);
 
   React.useEffect(() => {
     const checkUserRole = async () => {
@@ -60,18 +67,7 @@ function RootNavigation() {
   }, [isAuthenticated, segments]);
 
   if (loading || roleLoading) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: colors.background,
-        }}
-      >
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
+    return <Loader variant="fullscreen" message="Loading..." />;
   }
 
   return (
@@ -89,12 +85,14 @@ function RootNavigation() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <CartProvider>
-        <WishlistProvider>
-          <RootNavigation />
-        </WishlistProvider>
-      </CartProvider>
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <CartProvider>
+          <WishlistProvider>
+            <RootNavigation />
+          </WishlistProvider>
+        </CartProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }

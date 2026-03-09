@@ -5,7 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Animated,
-  Dimensions,
+  useWindowDimensions,
   Pressable,
   ScrollView,
   StatusBar,
@@ -14,10 +14,12 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import SearchBar from "@/components/common/SearchBar";
 import CategoriesList from "@/components/home/CategoriesList";
 import BannerSlider from "@/components/home/BannerSlider";
+import DealOfTheDay from "@/components/home/DealOfTheDay";
 import CartBadge from "@/components/common/CartBadge";
 import WishlistBadge from "@/components/common/WishlistBadge";
 import CategoryProducts from "@/components/CategoryProducts";
@@ -27,12 +29,10 @@ import { SCREEN_PADDING } from "@/constants/layout";
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
-import { router } from "expo-router";
+import { router, useNavigation } from "expo-router";
 import axiosInstance from "@/constants/api/axiosInstance";
 import { Product } from "@/assets/types/product";
 import { SearchSuggestion } from "@/components/common/SearchBar";
-
-const { width } = Dimensions.get("window");
 
 // ─── Side Menu Item ───────────────────────────────────────────────────────────
 
@@ -102,9 +102,12 @@ type Store = {
 
 export default function HomeScreen() {
   const { logout, user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const navigation = useNavigation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<any>(null);
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [allCategories, setAllCategories] = useState<Category[]>([]);
@@ -156,6 +159,14 @@ export default function HomeScreen() {
 
     fetchData();
   }, []);
+
+  // ── Hide tab bar while viewing category products ──────────────────────────────
+
+  useEffect(() => {
+    navigation.setOptions({
+      tabBarStyle: selectedCategory ? { display: "none" } : undefined,
+    });
+  }, [navigation, selectedCategory]);
 
   // ── Search suggestions ──────────────────────────────────────────────────────
 
@@ -217,7 +228,11 @@ export default function HomeScreen() {
       const category = allCategories.find(
         (c) => c._id === suggestion.id.replace("category-", "")
       );
-      if (category) { setSelectedCategory(category); setSearchQuery(""); }
+      if (category) {
+        setSelectedCategory(category);
+        setSelectedStore(null);
+        setSearchQuery("");
+      }
     } else if (suggestion.type === "store") {
       const store = allStores.find(
         (s) => s._id === suggestion.id.replace("store-", "")
@@ -251,12 +266,16 @@ export default function HomeScreen() {
 
   // ─────────────────────────────────────────────────────────────────────────────
 
+  const headerPaddingTop = insets.top + 10;
+  const storeHeaderPaddingTop = insets.top + 12;
+  const menuHeaderPaddingTop = insets.top + 16;
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} translucent={false} />
 
       {/* ── Header ── */}
-      <View style={[styles.headerContainer, scrolled && styles.headerShadow]}>
+      <View style={[styles.headerContainer, scrolled && styles.headerShadow, { paddingTop: headerPaddingTop }]}>
         <View style={styles.headerBlob1} />
         <View style={styles.headerBlob2} />
         <View style={styles.header}>
@@ -286,12 +305,15 @@ export default function HomeScreen() {
       {selectedCategory ? (
         <CategoryProducts
           selectedCategory={selectedCategory}
-          onBack={() => { setSelectedCategory(null); setSearchQuery(""); }}
+          onBack={() => {
+            setSelectedCategory(null);
+            setSearchQuery("");
+          }}
         />
       ) : selectedStore ? (
         <View style={{ flex: 1, backgroundColor: colors.background }}>
           {/* Store Header */}
-          <View style={styles.storeHeader}>
+          <View style={[styles.storeHeader, { paddingTop: storeHeaderPaddingTop }]}>
             <TouchableOpacity
               onPress={() => { setSelectedStore(null); setSearchQuery(""); }}
               style={styles.backButton}
@@ -312,7 +334,7 @@ export default function HomeScreen() {
               <SectionHeader title={`Products at ${selectedStore.name}`} />
             </View>
             {productsByStore.length > 0 ? (
-              <ProductGrid products={productsByStore} />
+              <ProductGrid products={productsByStore} responsive />
             ) : (
               <View style={styles.emptyState}>
                 <Ionicons name="basket-outline" size={48} color={colors.disabled} />
@@ -344,11 +366,12 @@ export default function HomeScreen() {
           >
             <CategoriesList onSelectCategory={setSelectedCategory} />
             <BannerSlider />
+            <DealOfTheDay />
 
             <View style={{ paddingHorizontal: SCREEN_PADDING, marginTop: 16 }}>
               <SectionHeader title="🔥 Featured Products" />
             </View>
-            <ProductGrid products={allProducts.slice(0, 10)} />
+            <ProductGrid products={allProducts.slice(0, 10)} responsive />
 
             {/* Promo box */}
             <View style={styles.promoBox}>
@@ -382,8 +405,8 @@ export default function HomeScreen() {
             <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]} />
           </Pressable>
 
-          <Animated.View style={[styles.sideMenu, { transform: [{ translateX: slideAnim }] }]}>
-            <View style={styles.menuHeader}>
+          <Animated.View style={[styles.sideMenu, { width: width * 0.72, transform: [{ translateX: slideAnim }] }]}>
+            <View style={[styles.menuHeader, { paddingTop: menuHeaderPaddingTop }]}>
               <View style={styles.menuHeaderBlob} />
               <View style={styles.menuUserRow}>
                 <View style={styles.menuAvatar}>
@@ -441,7 +464,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   headerContainer: {
-    paddingTop: 10, paddingHorizontal: SCREEN_PADDING,
+    paddingHorizontal: SCREEN_PADDING,
     backgroundColor: colors.primaryDark, overflow: "hidden", position: "relative",
   },
   headerShadow: { elevation: 6, shadowColor: "#000", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6 },
@@ -466,8 +489,8 @@ const styles = StyleSheet.create({
   promoTagText: { fontSize: 10, color: "#fff", fontWeight: "600" },
   menuOverlayWrap: { zIndex: 9998, elevation: 9998 },
   overlay: { flex: 1, backgroundColor: "#000" },
-  sideMenu: { position: "absolute", top: 0, right: 0, width: width * 0.72, height: "100%", backgroundColor: colors.card, zIndex: 9999, elevation: 9999, shadowColor: "#000", shadowOffset: { width: -4, height: 0 }, shadowOpacity: 0.15, shadowRadius: 12 },
-  menuHeader: { backgroundColor: colors.primaryDark, paddingTop: 55, paddingBottom: 24, paddingHorizontal: 20, overflow: "hidden", position: "relative" },
+  sideMenu: { position: "absolute", top: 0, right: 0, height: "100%", backgroundColor: colors.card, zIndex: 9999, elevation: 9999, shadowColor: "#000", shadowOffset: { width: -4, height: 0 }, shadowOpacity: 0.15, shadowRadius: 12 },
+  menuHeader: { backgroundColor: colors.primaryDark, paddingBottom: 24, paddingHorizontal: 20, overflow: "hidden", position: "relative" },
   menuHeaderBlob: { position: "absolute", width: 150, height: 150, borderRadius: 75, backgroundColor: colors.primary, opacity: 0.3, top: -40, right: -30 },
   menuUserRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   menuAvatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "rgba(255,255,255,0.3)" },
@@ -478,7 +501,7 @@ const styles = StyleSheet.create({
   logoutBtn: { flexDirection: "row", alignItems: "center", gap: 14, marginTop: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: colors.divider },
   logoutText: { fontSize: 15, fontWeight: "600", color: colors.error },
   menuFooter: { textAlign: "center", fontSize: 11, color: colors.textMuted, paddingBottom: 30, fontWeight: "500" },
-  storeHeader: { backgroundColor: colors.card, paddingHorizontal: SCREEN_PADDING, paddingTop: 60, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.divider },
+  storeHeader: { backgroundColor: colors.card, paddingHorizontal: SCREEN_PADDING, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.divider },
   backButton: { marginBottom: 12 },
   storeHeaderContent: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 8 },
   storeHeaderTitle: { fontSize: 22, fontWeight: "800", color: colors.textPrimary },

@@ -3,16 +3,22 @@ import { FlatList, View, Text, StyleSheet, TouchableOpacity } from "react-native
 import { Ionicons } from "@expo/vector-icons";
 import ProductCard from "./ProductCard";
 import { Product } from "@/assets/types/product";
-import { SCREEN_PADDING, CARD_GAP } from "@/constants/layout";
+import { SCREEN_PADDING, CARD_GAP, useLayout } from "@/constants/layout";
 import { colors } from "@/constants/colors";
 
 type Props = {
   products?: Product[];
   onRemove?: (productId: string) => void;
   showRemoveButton?: boolean;
+  /** When true, card size adapts to current screen width (use on main product grids) */
+  responsive?: boolean;
 };
 
-export default function ProductGrid({ products = [], onRemove, showRemoveButton = false }: Props) {
+export default function ProductGrid({ products = [], onRemove, showRemoveButton = false, responsive = false }: Props) {
+  const layout = useLayout();
+  const cardWidth = responsive ? layout.cardWidth : undefined;
+  const cardHeight = responsive ? layout.cardHeight : undefined;
+
   if (!products.length) {
     return (
       <View style={styles.emptyContainer}>
@@ -44,11 +50,12 @@ export default function ProductGrid({ products = [], onRemove, showRemoveButton 
             nearestExpiry={item.nearestExpiry}
             variants={item.variants ?? []}
             description={item.description}
-            // ── new fields ──
             tags={item.tags}
             taxRate={item.taxRate}
             minOrderQty={item.minOrderQty}
             maxOrderQty={item.maxOrderQty}
+            cardWidth={cardWidth}
+            cardHeight={cardHeight}
           />
           {showRemoveButton && onRemove && (
             <TouchableOpacity

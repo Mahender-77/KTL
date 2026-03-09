@@ -16,9 +16,11 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 
 export default function Login() {
+  const insets = useSafeAreaInsets();
   const { login } = useAuth();
   const router = useRouter();
 
@@ -67,7 +69,7 @@ export default function Login() {
         keyboardShouldPersistTaps="handled"
       >
         {/* ── Top green wave area ── */}
-        <View style={styles.topSection}>
+        <View style={[styles.topSection, { paddingTop: insets.top }]}>
           <View style={styles.blob1} />
           <View style={styles.blob2} />
 

@@ -15,6 +15,8 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Home",
+          // Ensure tapping Home always takes you to the Home screen
+          href: "/(tabs)",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="home-outline" size={size} color={color} />
           ),

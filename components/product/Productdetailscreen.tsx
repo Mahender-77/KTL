@@ -6,11 +6,12 @@ import {
   Image,
   TouchableOpacity,
   ScrollView,
-  Dimensions,
+  useWindowDimensions,
   StatusBar,
   TextInput,
   Alert,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useState, useEffect, useRef } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -20,9 +21,8 @@ import { colors } from "@/constants/colors";
 import { useWishlist } from "@/context/WishlistContext";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
+import Toast from "@/components/common/Toast";
 
-const { width: SW } = Dimensions.get("window");
-const SIMILAR_W = SW * 0.46;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -50,6 +50,11 @@ function withTax(price: number, taxRate?: number | null): number {
   return price * (1 + taxRate / 100);
 }
 
+/** Display price as whole number (no decimals); Math.floor so shown amount is never more than actual */
+function formatPrice(value: number): string {
+  return Math.floor(value).toLocaleString();
+}
+
 // ─── Dummy similar products ───────────────────────────────────────────────────
 
 const DUMMY_SIMILAR = [
@@ -61,12 +66,12 @@ const DUMMY_SIMILAR = [
 
 // ─── Similar Card ─────────────────────────────────────────────────────────────
 
-function DummySimilarCard({ item }: { item: typeof DUMMY_SIMILAR[0] }) {
+function DummySimilarCard({ item, cardWidth }: { item: typeof DUMMY_SIMILAR[0]; cardWidth: number }) {
   const pct = item.offerPrice
     ? Math.round(((item.price - item.offerPrice) / item.price) * 100)
     : null;
   return (
-    <View style={sc.card}>
+    <View style={[sc.card, { width: cardWidth }]}>
       <View style={sc.imgBox}>
         <View style={sc.imgPlaceholder}>
           <Ionicons name="leaf-outline" size={36} color={colors.primaryLight} />
@@ -77,26 +82,27 @@ function DummySimilarCard({ item }: { item: typeof DUMMY_SIMILAR[0] }) {
         <Text style={sc.name} numberOfLines={2}>{item.name}</Text>
         <Text style={sc.size}>500 g</Text>
         <View style={sc.priceRow}>
-          {item.offerPrice && <Text style={sc.orig}>₹{item.price}</Text>}
-          <Text style={sc.price}>₹{item.offerPrice ?? item.price}</Text>
+          {item.offerPrice && <Text style={sc.orig}>₹{formatPrice(item.price)}</Text>}
+          <Text style={sc.price}>₹{formatPrice(item.offerPrice ?? item.price)}</Text>
         </View>
       </View>
     </View>
   );
 }
 
-function SimilarCard({ item }: { item: Product }) {
+function SimilarCard({ item, cardWidth }: { item: Product; cardWidth: number }) {
   const router = useRouter();
   const v = item.variants?.[0];
   const isFixed = item.pricingMode === "fixed";
-  const basePrice = isFixed && v ? (v.offerPrice ?? v.price) : (item.pricePerUnit ?? 0);
+  const hasValidOffer = isFixed && v && v.offerPrice != null && v.offerPrice > 0 && v.offerPrice < v.price;
+  const basePrice = isFixed && v ? (hasValidOffer ? v.offerPrice! : v.price) : (item.pricePerUnit ?? 0);
   const displayPrice = withTax(basePrice, item.taxRate);
-  const orig = isFixed && v?.offerPrice ? withTax(v.price, item.taxRate) : null;
+  const orig = hasValidOffer && v ? withTax(v.price, item.taxRate) : null;
   const pct = v ? getDiscount(v) : null;
 
   return (
     <TouchableOpacity
-      style={sc.card}
+      style={[sc.card, { width: cardWidth }]}
       activeOpacity={0.9}
       onPress={() => router.push({ pathname: "/product/[id]", params: { id: item._id } })}
     >
@@ -117,8 +123,8 @@ function SimilarCard({ item }: { item: Product }) {
           : <Text style={sc.size}>Per {item.baseUnit ?? "pcs"}</Text>
         }
         <View style={sc.priceRow}>
-          {orig != null && <Text style={sc.orig}>₹{orig.toLocaleString()}</Text>}
-          <Text style={sc.price}>₹{displayPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}</Text>
+          {orig != null && <Text style={sc.orig}>₹{formatPrice(orig)}</Text>}
+          <Text style={sc.price}>₹{formatPrice(displayPrice)}</Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -127,7 +133,7 @@ function SimilarCard({ item }: { item: Product }) {
 
 const sc = StyleSheet.create({
   card: {
-    width: SIMILAR_W, backgroundColor: colors.card, borderRadius: 16,
+    minWidth: 100, backgroundColor: colors.card, borderRadius: 16,
     overflow: "hidden", elevation: 3,
     shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08, shadowRadius: 6,
@@ -163,12 +169,17 @@ export default function ProductDetailScreen({
   onBack,
   onAddToCart,
 }: Props) {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { width: SW } = useWindowDimensions();
+  const similarW = SW * 0.46;
   const { isInWishlist, addToWishlist, removeFromWishlist, loading: wishlistLoading } = useWishlist();
   const { isAuthenticated } = useAuth();
   const { addToCart, loading: cartLoading } = useCart();
 
   const [varIdx, setVarIdx] = useState(0);
   const [imgIdx, setImgIdx] = useState(0);
+  const [showAddedToast, setShowAddedToast] = useState(false);
 
   const pricingMode     = product.pricingMode ?? "unit";
   const baseUnit        = product.baseUnit    ?? "pcs";
@@ -190,7 +201,10 @@ export default function ProductDetailScreen({
   const outOfStock = availableStock <= 0;
 
   // Effective constraints taking minOrderQty / maxOrderQty into account
-  const effectiveMin = minOrderQty ?? (isUnit ? 1 : 0.01);
+  // custom-weight: decimals allowed, min 0.01. fixed/unit: whole numbers, min 1.
+  const effectiveMin = isCustomWeight
+    ? Math.max(0.01, minOrderQty ?? 0.01)
+    : (minOrderQty ?? 1);
   const effectiveMax = maxOrderQty ? Math.min(maxOrderQty, availableStock) : availableStock;
 
   // ── Quantity state ──
@@ -200,11 +214,13 @@ export default function ProductDetailScreen({
   const displayQty   = isCustomWeight ? (parseFloat(qtyStr) || 0) : (outOfStock ? 0 : qty);
   const exceedsStock = displayQty > effectiveMax;
   const belowMin     = displayQty > 0 && displayQty < effectiveMin;
+  const isZeroWeight = isCustomWeight && displayQty <= 0;
 
   // ── Price ──
-  const basePrice    = isFixed && v ? (v.offerPrice ?? v.price) : pricePerUnit;
+  const hasValidOffer = isFixed && v && v.offerPrice != null && v.offerPrice > 0 && v.offerPrice < v.price;
+  const basePrice    = isFixed && v ? (hasValidOffer ? v.offerPrice! : v.price) : pricePerUnit;
   const displayPrice = withTax(basePrice, taxRate);
-  const origPrice    = isFixed && v?.offerPrice ? withTax(v.price, taxRate) : null;
+  const origPrice    = hasValidOffer && v ? withTax(v.price, taxRate) : null;
   const pct          = v ? getDiscount(v) : null;
   const total        = displayPrice * displayQty;
 
@@ -245,11 +261,30 @@ export default function ProductDetailScreen({
       return;
     }
     const variantId = isFixed && v?._id ? v._id : product._id;
+    const qtyToSend = isCustomWeight ? Math.round(displayQty * 1000) / 1000 : Math.floor(displayQty);
     try {
-      await addToCart(product._id, variantId, displayQty);
-      Alert.alert("Added", "Item added to cart");
-    } catch {
-      Alert.alert("Error", "Could not add to cart");
+      await addToCart(product._id, variantId, qtyToSend);
+      setShowAddedToast(true);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? err?.message ?? "Please try again.";
+      Alert.alert("Could not add to cart", msg);
+    }
+  };
+
+  const handleBuyNow = async () => {
+    if (!canAddToCart || cartLoading) return;
+    if (!isAuthenticated) {
+      Alert.alert("Login Required", "Please login to add items to your cart");
+      return;
+    }
+    const variantId = isFixed && v?._id ? v._id : product._id;
+    const qtyToSend = isCustomWeight ? Math.round(displayQty * 1000) / 1000 : Math.floor(displayQty);
+    try {
+      await addToCart(product._id, variantId, qtyToSend);
+      router.push("/checkout");
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? err?.message ?? "Please try again.";
+      Alert.alert("Could not add to cart", msg);
     }
   };
 
@@ -259,6 +294,14 @@ export default function ProductDetailScreen({
 
   return (
     <View style={s.root}>
+      <Toast
+        visible={showAddedToast}
+        message="Item added to cart"
+        actionLabel="View Cart"
+        onAction={() => router.push("/(tabs)/cart")}
+        onDismiss={() => setShowAddedToast(false)}
+        duration={5000}
+      />
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
       <ScrollView
@@ -268,7 +311,7 @@ export default function ProductDetailScreen({
         bounces
       >
         {/* ── Hero image ── */}
-        <View style={s.heroBox}>
+        <View style={[s.heroBox, { width: SW, height: SW * 0.9 }]}>
           <ScrollView
             horizontal pagingEnabled showsHorizontalScrollIndicator={false}
             scrollEventThrottle={16}
@@ -278,10 +321,10 @@ export default function ProductDetailScreen({
           >
             {images.length > 0 ? (
               images.map((uri, i) => (
-                <Image key={i} source={{ uri }} style={s.heroImg} resizeMode="cover" />
+                <Image key={i} source={{ uri }} style={[s.heroImg, { width: SW, height: SW * 0.9 }]} resizeMode="cover" />
               ))
             ) : (
-              <View style={[s.heroImg, sc.imgPlaceholder]}>
+              <View style={[s.heroImg, sc.imgPlaceholder, { width: SW, height: SW * 0.9 }]}>
                 <Ionicons name="image-outline" size={64} color={colors.textMuted} />
               </View>
             )}
@@ -297,7 +340,7 @@ export default function ProductDetailScreen({
             </View>
           )}
 
-          <View style={s.heroHeader}>
+          <View style={[s.heroHeader, { paddingTop: insets.top + 12 }]}>
             <TouchableOpacity style={s.hBtn} onPress={onBack} activeOpacity={0.85}>
               <Ionicons name="arrow-back" size={18} color="#fff" />
             </TouchableOpacity>
@@ -323,81 +366,26 @@ export default function ProductDetailScreen({
           <Text style={s.name} numberOfLines={2}>{product.name}</Text>
           {product.description ? <Text style={s.desc}>{product.description}</Text> : null}
 
-          {/* Tags */}
-          {product.tags && product.tags.length > 0 && (
-            <ScrollView
-              horizontal showsHorizontalScrollIndicator={false}
-              style={s.tagsScroll} contentContainerStyle={s.tagsRow}
-            >
-              {product.tags.map((tag) => (
-                <View key={tag} style={s.tagChip}>
-                  <Text style={s.tagText}>{tag}</Text>
-                </View>
-              ))}
-            </ScrollView>
-          )}
-
-          {/* Price — for custom-weight: ₹X per kg, total updates when user changes weight */}
-          <View style={s.priceDisplayBox}>
-            <Text style={s.priceDisplay}>
-              ₹{displayPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-              {(isUnit || isCustomWeight) && ` / ${baseUnit}`}
-            </Text>
-            {isCustomWeight && (
-              <Text style={s.priceHint}>
-                Total = price × weight (updates as you enter)
-              </Text>
-            )}
-            {origPrice != null && (
-              <Text style={s.priceOrig}>
-                MRP ₹{origPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-              </Text>
-            )}
-            {taxRate != null && taxRate > 0 && (
-              <Text style={s.taxNote}>Inclusive of {taxRate}% tax</Text>
-            )}
-          </View>
-
-          {/* Stock */}
-          <View style={s.stockRow}>
-            {outOfStock ? (
-              <Text style={s.outOfStockText}>Out of Stock</Text>
-            ) : (
-              <Text style={s.stockText}>
-                {availableStock} {isFixed && v ? `${v.value} ${v.unit}` : baseUnit} available
-              </Text>
-            )}
-          </View>
-
-          {/* Order constraints info */}
-          {(minOrderQty != null || maxOrderQty != null) && (
-            <View style={s.constraintRow}>
-              {minOrderQty != null && (
-                <Text style={s.constraintText}>Min: {minOrderQty} {baseUnit}</Text>
-              )}
-              {maxOrderQty != null && (
-                <Text style={s.constraintText}>Max: {maxOrderQty} {baseUnit}</Text>
-              )}
-            </View>
-          )}
-
           {/* Quantity input */}
           <View style={s.nameRow}>
-            <Text style={s.secLabel}>QUANTITY</Text>
+            <Text style={s.secLabel}>QUANTITY{isCustomWeight ? ` (in ${baseUnit})` : ""}</Text>
             {isCustomWeight ? (
-              <TextInput
-                style={s.qtyInput}
-                value={qtyStr}
-                onChangeText={setQtyStr}
-                keyboardType="decimal-pad"
-                placeholder={String(effectiveMin)}
-                placeholderTextColor={colors.textMuted}
-                onBlur={() => {
-                  const n = parseFloat(qtyStr) || effectiveMin;
-                  const clamped = Math.max(effectiveMin, Math.min(effectiveMax, n));
-                  setQtyStr(String(clamped));
-                }}
-              />
+              <View style={s.qtyInputRow}>
+                <TextInput
+                  style={s.qtyInput}
+                  value={qtyStr}
+                  onChangeText={setQtyStr}
+                  keyboardType="decimal-pad"
+                  placeholder={String(effectiveMin)}
+                  placeholderTextColor={colors.textMuted}
+                  onBlur={() => {
+                    const n = parseFloat(qtyStr) || effectiveMin;
+                    const clamped = Math.max(effectiveMin, Math.min(effectiveMax, n));
+                    setQtyStr(String(clamped));
+                  }}
+                />
+                <Text style={s.qtyUnit}>{baseUnit}</Text>
+              </View>
             ) : (
               <View style={s.stepper}>
                 <TouchableOpacity
@@ -428,12 +416,21 @@ export default function ProductDetailScreen({
           </View>
 
           {/* Validation hints */}
+          {isZeroWeight && (
+            <Text style={s.errorText}>Please enter a weight greater than 0</Text>
+          )}
           {belowMin && displayQty > 0 && (
-            <Text style={s.errorText}>Minimum order is {effectiveMin} {baseUnit}</Text>
+            <Text style={s.errorText}>Minimum order is {effectiveMin}{isCustomWeight ? ` ${baseUnit}` : ""}</Text>
           )}
           {exceedsStock && displayQty > 0 && (
             <Text style={s.errorText}>
-              Only {effectiveMax} {baseUnit} available
+              Only {effectiveMax}{isCustomWeight ? ` ${baseUnit}` : ""} available
+            </Text>
+          )}
+          {/* When user selects max weight/qty, suggest selecting below max */}
+          {displayQty >= effectiveMax && displayQty > 0 && effectiveMax < Infinity && (
+            <Text style={s.maxHint}>
+              Suggestion: Consider selecting below max {isCustomWeight ? baseUnit : "quantity"} for better availability.
             </Text>
           )}
 
@@ -458,7 +455,7 @@ export default function ProductDetailScreen({
                       {vpct && !isOn && <View style={s.varDot} />}
                       <Text style={[s.varSize, isOn && s.varSizeOn]}>{vLabel(vv)}</Text>
                       <Text style={[s.varPrice, isOn && s.varPriceOn]}>
-                        ₹{withTax(vv.offerPrice ?? vv.price, taxRate).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        ₹{formatPrice(withTax((vv.offerPrice != null && vv.offerPrice > 0) ? vv.offerPrice : vv.price, taxRate))}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -467,35 +464,49 @@ export default function ProductDetailScreen({
             </>
           )}
 
-          {/* Total */}
+          {/* Total — price is computed from selected weight/variant (tax included in total, not shown) */}
           <View style={s.totalBox}>
             <View style={s.totalLeft}>
               <Text style={s.totalLabel}>TOTAL</Text>
               <Text style={s.totalPrice}>
-                ₹{total.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                ₹{formatPrice(total)}
               </Text>
-              {origPrice != null && origPrice > displayPrice && displayQty > 0 && (
-                <Text style={s.saving}>
-                  Save ₹{((origPrice - displayPrice) * displayQty).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                </Text>
-              )}
-              {taxRate != null && taxRate > 0 && displayQty > 0 && (
-                <Text style={s.taxBreakdown}>
-                  (incl. ₹{(total - displayQty * basePrice).toLocaleString(undefined, { maximumFractionDigits: 2 })} tax)
-                </Text>
-              )}
             </View>
             <View style={s.trustCol}>
-              {[
-                { icon: "leaf-outline",              t: "100% Fresh" },
-                { icon: "flash-outline",             t: "Fast Delivery" },
-                { icon: "shield-checkmark-outline",  t: "Quality Assured" },
-              ].map((c) => (
+              {(() => {
+                const catName = typeof product.category === "object" && product.category?.name
+                  ? String(product.category.name).toLowerCase()
+                  : "";
+                const catSlug = typeof product.category === "object" && product.category?.slug
+                  ? String(product.category.slug).toLowerCase()
+                  : "";
+                const tags = (product.tags ?? []).map((t) => String(t).toLowerCase());
+                const nameDesc = `${(product.name ?? "").toLowerCase()} ${(product.description ?? "").toLowerCase()}`;
+                const electronicsKeywords = ["electronic", "watch", "watches", "tech", "gadget", "mobile", "phone", "smart"];
+                const matchesKeyword = (s: string) => electronicsKeywords.some((k) => s.includes(k));
+                const isElectronics =
+                  matchesKeyword(catName) ||
+                  matchesKeyword(catSlug) ||
+                  tags.some(matchesKeyword) ||
+                  matchesKeyword(nameDesc);
+                const trustItems = isElectronics
+                  ? [
+                      { icon: "shield-checkmark-outline", t: "Warranty Assured" },
+                      { icon: "flash-outline", t: "Fast Delivery" },
+                      { icon: "construct-outline", t: "Quality Checked" },
+                    ]
+                  : [
+                      { icon: "leaf-outline", t: "100% Fresh" },
+                      { icon: "flash-outline", t: "Fast Delivery" },
+                      { icon: "shield-checkmark-outline", t: "Quality Assured" },
+                    ];
+                return trustItems.map((c) => (
                 <View key={c.t} style={s.trustRow}>
                   <Ionicons name={c.icon as any} size={13} color={colors.primary} />
                   <Text style={s.trustT}>{c.t}</Text>
                 </View>
-              ))}
+              ));
+              })()}
             </View>
           </View>
         </View>
@@ -512,8 +523,8 @@ export default function ProductDetailScreen({
             contentContainerStyle={s.simList}
           >
             {showDummy
-              ? DUMMY_SIMILAR.map((p) => <DummySimilarCard key={p._id} item={p} />)
-              : similarProducts.map((p) => <SimilarCard key={p._id} item={p} />)
+              ? DUMMY_SIMILAR.map((p) => <DummySimilarCard key={p._id} item={p} cardWidth={similarW} />)
+              : similarProducts.map((p) => <SimilarCard key={p._id} item={p} cardWidth={similarW} />)
             }
           </ScrollView>
         </View>
@@ -522,7 +533,7 @@ export default function ProductDetailScreen({
       </ScrollView>
 
       {/* ── Sticky CTA ── */}
-      <View style={s.cta}>
+      <View style={[s.cta, { paddingBottom: insets.bottom + 16 }]}>
         <TouchableOpacity
           style={[s.cartBtn, !canAddToCart && s.ctaDisabled]}
           activeOpacity={0.85}
@@ -539,16 +550,13 @@ export default function ProductDetailScreen({
         <TouchableOpacity
           style={[s.buyBtn, !canAddToCart && s.ctaDisabled]}
           activeOpacity={0.85}
-          onPress={() => {
-            if (!canAddToCart) return;
-            onAddToCart?.(product, v!, displayQty);
-          }}
-          disabled={!canAddToCart}
+          onPress={handleBuyNow}
+          disabled={!canAddToCart || cartLoading}
         >
           <Text style={s.buyT}>
             {!canAddToCart
               ? exceedsStock ? "Reduce quantity"
-              : belowMin ? `Min ${effectiveMin} ${baseUnit}`
+              : belowMin ? `Min ${effectiveMin}${isCustomWeight ? ` ${baseUnit}` : ""}`
               : "Out of Stock"
               : "Buy Now"}
           </Text>
@@ -556,7 +564,7 @@ export default function ProductDetailScreen({
             <>
               <View style={s.buyDiv} />
               <Text style={s.buyPrice}>
-                ₹{total.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                ₹{formatPrice(total)}
               </Text>
             </>
           )}
@@ -573,13 +581,13 @@ const s = StyleSheet.create({
   scroll: { flex: 1 },
   content: { flexGrow: 1 },
 
-  heroBox: { width: SW, height: SW * 0.9, backgroundColor: colors.surface, overflow: "hidden" },
-  heroImg: { width: SW, height: SW * 0.9 },
+  heroBox: { backgroundColor: colors.surface, overflow: "hidden" as const },
+  heroImg: { width: "100%", height: "100%" },
   heroFade: { position: "absolute", bottom: 0, left: 0, right: 0, height: 130, backgroundColor: "rgba(0,0,0,0.32)" },
   dots: { position: "absolute", bottom: 72, alignSelf: "center", flexDirection: "row", gap: 5 },
   dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.4)" },
   dotOn: { width: 16, backgroundColor: "#fff" },
-  heroHeader: { position: "absolute", top: 50, left: 0, right: 0, flexDirection: "row", justifyContent: "space-between", paddingHorizontal: SCREEN_PADDING },
+  heroHeader: { position: "absolute", top: 0, left: 0, right: 0, flexDirection: "row", justifyContent: "space-between", paddingHorizontal: SCREEN_PADDING },
   hRight: { flexDirection: "row", gap: 8 },
   hBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.38)", alignItems: "center", justifyContent: "center" },
   heroDiscount: { position: "absolute", bottom: 24, right: SCREEN_PADDING, backgroundColor: colors.success, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
@@ -589,27 +597,11 @@ const s = StyleSheet.create({
   name: { fontSize: 28, fontWeight: "800", color: colors.textPrimary, lineHeight: 34, letterSpacing: -0.4, marginBottom: 8 },
   desc: { fontSize: 13, color: colors.textMuted, lineHeight: 19, marginBottom: 12 },
 
-  tagsScroll: { marginBottom: 12 },
-  tagsRow: { gap: 6, flexDirection: "row" },
-  tagChip: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 3 },
-  tagText: { fontSize: 11, color: colors.textMuted, fontWeight: "600" },
-
-  priceDisplayBox: { marginBottom: 6 },
-  priceDisplay: { fontSize: 32, fontWeight: "900", color: colors.primary, letterSpacing: -0.5 },
-  priceOrig: { fontSize: 13, color: colors.disabled, textDecorationLine: "line-through", marginTop: 2 },
-  priceHint: { fontSize: 11, color: colors.textMuted, marginTop: 4, fontStyle: "italic" },
-  taxNote: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
-
-  stockRow: { marginBottom: 8 },
-  stockText: { fontSize: 13, fontWeight: "600", color: colors.textSecondary },
-  outOfStockText: { fontSize: 13, fontWeight: "700", color: colors.error },
-
-  constraintRow: { flexDirection: "row", gap: 12, marginBottom: 10 },
-  constraintText: { fontSize: 11, color: colors.textMuted, fontWeight: "600", backgroundColor: colors.surface, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-
   nameRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 8 },
   secLabel: { fontSize: 10, fontWeight: "700", color: colors.textMuted, letterSpacing: 1.2, marginBottom: 10 },
-  qtyInput: { width: 100, paddingVertical: 10, paddingHorizontal: 12, fontSize: 16, fontWeight: "700", color: colors.textPrimary, borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface },
+  qtyInputRow: { flexDirection: "row", alignItems: "center", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 10, overflow: "hidden" },
+  qtyInput: { width: 90, paddingVertical: 10, paddingHorizontal: 12, fontSize: 16, fontWeight: "700", color: colors.textPrimary, backgroundColor: "transparent" },
+  qtyUnit: { fontSize: 12, fontWeight: "700", color: colors.primary, paddingRight: 12 },
   stepper: { flexDirection: "row", alignItems: "center", backgroundColor: colors.surface, borderRadius: 10, padding: 6, gap: 5 },
   stepBtn: { width: 30, height: 30, borderRadius: 8, backgroundColor: colors.card, alignItems: "center", justifyContent: "center", elevation: 1, borderWidth: 1, borderColor: colors.border },
   stepOff: { backgroundColor: colors.surface },
@@ -629,8 +621,7 @@ const s = StyleSheet.create({
   totalLeft: { flex: 1 },
   totalLabel: { fontSize: 10, color: colors.textMuted, fontWeight: "700", letterSpacing: 1, marginBottom: 2 },
   totalPrice: { fontSize: 26, fontWeight: "900", color: colors.primary, letterSpacing: -0.5 },
-  saving: { fontSize: 11, color: colors.success, fontWeight: "600", marginTop: 2 },
-  taxBreakdown: { fontSize: 10, color: colors.textMuted, marginTop: 2 },
+  maxHint: { fontSize: 11, color: colors.textMuted, fontStyle: "italic", marginTop: 6, marginBottom: 4 },
   trustCol: { gap: 6 },
   trustRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   trustT: { fontSize: 11, color: colors.textSecondary, fontWeight: "500" },
@@ -642,7 +633,7 @@ const s = StyleSheet.create({
   simDummyNote: { fontSize: 11, color: colors.textMuted, fontStyle: "italic" },
   simList: { paddingHorizontal: SCREEN_PADDING, gap: 12 },
 
-  cta: { position: "absolute", bottom: 0, left: 0, right: 0, flexDirection: "row", gap: 10, paddingHorizontal: SCREEN_PADDING, paddingTop: 10, paddingBottom: 26, backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.divider, elevation: 14, shadowColor: "#000", shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.08, shadowRadius: 8 },
+  cta: { position: "absolute", bottom: 0, left: 0, right: 0, flexDirection: "row", gap: 10, paddingHorizontal: SCREEN_PADDING, paddingTop: 10, backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.divider, elevation: 14, shadowColor: "#000", shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.08, shadowRadius: 8 },
   cartBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 16, height: 52, borderRadius: 14, borderWidth: 2, borderColor: colors.primary },
   cartT: { fontSize: 13, fontWeight: "700", color: colors.primary },
   buyBtn: { flex: 1, height: 52, borderRadius: 14, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center" },

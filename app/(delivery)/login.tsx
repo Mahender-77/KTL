@@ -40,6 +40,7 @@ export default function DeliveryLogin() {
 
       const token = response.data.accessToken;
       await AsyncStorage.setItem("accessToken", token);
+      await AsyncStorage.setItem("authLastActivityAt", String(Date.now()));
       axiosInstance.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 
       // Verify user is a delivery person
@@ -47,6 +48,7 @@ export default function DeliveryLogin() {
       if (userRes.data.role !== "delivery") {
         Alert.alert("Error", "This account is not authorized for delivery access");
         await AsyncStorage.removeItem("accessToken");
+        await AsyncStorage.removeItem("authLastActivityAt");
         return;
       }
 

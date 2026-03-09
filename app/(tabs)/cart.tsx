@@ -10,8 +10,10 @@ import {
   StatusBar,
   Animated,
   ScrollView,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Loader from "@/components/common/Loader";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useCart } from "@/context/CartContext";
@@ -23,8 +25,6 @@ import { useFocusEffect } from "@react-navigation/native";
 import { Product, Variant } from "@/assets/types/product";
 import Toast from "@/components/common/Toast";
 
-const { width: SW } = Dimensions.get("window");
-const SIMILAR_W = SW * 0.46;
 
 interface CartItem {
   _id: string;
@@ -36,7 +36,9 @@ interface CartItem {
   variant: string;
   quantity: number;
   price: number;
+  originalPrice?: number;
   offerPrice?: number;
+  dealDiscountPercent?: number;
 }
 
 // ─── Cart Item Row ────────────────────────────────────────────────────────────
@@ -67,7 +69,10 @@ function CartItemRow({
     ]).start();
   }, []);
 
-  const displayPrice = item.offerPrice ?? item.price ?? 0;
+  // Prefer price from API; if 0 or invalid, fall back to originalPrice (never show 0 for valid items)
+  const rawPrice = Number(item.price);
+  const rawOriginal = item.originalPrice != null ? Number(item.originalPrice) : 0;
+  const displayPrice = rawPrice > 0 ? rawPrice : (rawOriginal > 0 ? rawOriginal : 0);
   const lineTotal = displayPrice * item.quantity;
 
   return (
@@ -90,7 +95,14 @@ function CartItemRow({
           {item.product?.name ?? "Product"}
         </Text>
 
-        <Text style={styles.itemPrice}>₹{displayPrice.toLocaleString()}</Text>
+        <View style={styles.priceRow}>
+          {item.dealDiscountPercent != null && (
+            <View style={styles.dealBadge}>
+              <Text style={styles.dealBadgeText}>{item.dealDiscountPercent}% Deal</Text>
+            </View>
+          )}
+          <Text style={styles.itemPrice}>₹{displayPrice.toLocaleString()}</Text>
+        </View>
 
         {/* Quantity controls */}
         <View style={styles.qtyRow}>
@@ -156,13 +168,14 @@ function EmptyCart() {
 }
 
 // ─── Related Product Card ─────────────────────────────────────────────────────
-function RelatedProductCard({ product, onAddToCart }: { product: Product; onAddToCart: (productId: string, variantId: string) => void }) {
+function RelatedProductCard({ product, onAddToCart, cardWidth }: { product: Product; onAddToCart: (productId: string, variantId: string) => void; cardWidth: number }) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const v = product.variants?.[0];
-  const price = v?.offerPrice ?? v?.price ?? 0;
-  const orig = v?.offerPrice ? v.price : null;
+  const hasValidOffer = v && v.offerPrice != null && v.offerPrice > 0 && v.offerPrice < v.price;
+  const price = v ? (hasValidOffer ? v.offerPrice! : (v.price ?? 0)) : 0;
+  const orig = hasValidOffer && v ? v.price : null;
   const pct = v && v.offerPrice && v.offerPrice < v.price
     ? Math.round(((v.price - v.offerPrice) / v.price) * 100)
     : null;
@@ -186,7 +199,7 @@ function RelatedProductCard({ product, onAddToCart }: { product: Product; onAddT
   return (
     <>
       <TouchableOpacity
-        style={relatedStyles.card}
+        style={[relatedStyles.card, { width: cardWidth }]}
         activeOpacity={0.9}
         onPress={() => router.push({ pathname: "/product/[id]", params: { id: product._id } })}
       >
@@ -247,7 +260,7 @@ function RelatedProductCard({ product, onAddToCart }: { product: Product; onAddT
 
 const relatedStyles = StyleSheet.create({
   card: {
-    width: SIMILAR_W,
+    minWidth: 120,
     backgroundColor: colors.card,
     borderRadius: 16,
     overflow: "hidden",
@@ -319,19 +332,37 @@ const relatedStyles = StyleSheet.create({
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function CartScreen() {
+  const insets = useSafeAreaInsets();
+  const { width: SW } = useWindowDimensions();
+  const similarW = SW * 0.46;
   const { removeFromCart, refreshCart, addToCart } = useCart();
   const [items, setItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkingOut, setCheckingOut] = useState(false);
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [loadingRelated, setLoadingRelated] = useState(false);
+  const [storeDeliveryFee, setStoreDeliveryFee] = useState<number | null>(null);
 
   const fetchCart = async () => {
     try {
       setLoading(true);
+
       const res = await axiosInstance.get("/api/cart");
       setItems(res.data.items ?? []);
-      
+
+      // Fetch delivery fee based on active stores (public endpoint)
+      axiosInstance
+        .get("/api/stores/public")
+        .then((storeRes) => {
+          const fee = storeRes.data?.data?.[0]?.deliveryFee;
+          if (typeof fee === "number" && fee >= 0) {
+            setStoreDeliveryFee(fee);
+          }
+        })
+        .catch(() => {
+          // fallback handled in fee computation
+        });
+
       // Fetch related products based on cart items' categories
       if (res.data.items && res.data.items.length > 0) {
         fetchRelatedProducts(res.data.items);
@@ -440,12 +471,15 @@ export default function CartScreen() {
     }
   };
 
-  // Compute totals
+  // Compute totals: prefer item.price; if 0, use item.originalPrice so we never sum 0 for valid items
   const subtotal = items.reduce((sum, item) => {
-    const price = item.offerPrice ?? item.price ?? 0;
+    const p = Number(item.price);
+    const orig = item.originalPrice != null ? Number(item.originalPrice) : 0;
+    const price = p > 0 ? p : (orig > 0 ? orig : 0);
     return sum + price * item.quantity;
   }, 0);
-  const deliveryFee = subtotal > 500 ? 0 : 40;
+  const baseDeliveryFee = storeDeliveryFee != null ? storeDeliveryFee : 40;
+  const deliveryFee = subtotal > 500 ? 0 : baseDeliveryFee;
   const total = subtotal + deliveryFee;
 
   return (
@@ -457,7 +491,7 @@ export default function CartScreen() {
       />
 
       {/* ── Header ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <View style={styles.headerBlob} />
         <TouchableOpacity
           style={styles.backBtn}
@@ -487,10 +521,7 @@ export default function CartScreen() {
       </View>
 
       {loading ? (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading your cart...</Text>
-        </View>
+        <Loader variant="fullscreen" message="Loading your cart..." />
       ) : items.length === 0 ? (
         <EmptyCart />
       ) : (
@@ -570,6 +601,7 @@ export default function CartScreen() {
                           key={product._id}
                           product={product}
                           onAddToCart={handleAddRelatedToCart}
+                          cardWidth={similarW}
                         />
                       ))}
                     </ScrollView>
@@ -580,7 +612,7 @@ export default function CartScreen() {
           />
 
           {/* ── Checkout CTA ── */}
-          <View style={styles.ctaWrap}>
+          <View style={[styles.ctaWrap, { paddingBottom: insets.bottom + 16 }]}>
             <TouchableOpacity
               style={styles.cartBtn}
               activeOpacity={0.85}
@@ -611,10 +643,9 @@ export default function CartScreen() {
 }
 
 const styles = StyleSheet.create({
-  // ── Header ──
+  // ── Header ── (paddingTop set via safe area inline)
   header: {
     backgroundColor: colors.primaryDark,
-    paddingTop: 10,
     paddingBottom: 16,
     paddingHorizontal: SCREEN_PADDING,
     flexDirection: "row",
@@ -752,11 +783,27 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: 4,
   },
+  priceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  },
+  dealBadge: {
+    backgroundColor: colors.success,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  dealBadgeText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: colors.card,
+  },
   itemPrice: {
     fontSize: 13,
     fontWeight: "800",
     color: colors.primary,
-    marginBottom: 8,
   },
   qtyRow: {
     flexDirection: "row",
@@ -840,7 +887,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
 
-  // ── Checkout CTA ──
+  // ── Checkout CTA ── (paddingBottom set via safe area inline)
   ctaWrap: {
     position: "absolute",
     bottom: 0,
@@ -850,7 +897,6 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: SCREEN_PADDING,
     paddingTop: 10,
-    paddingBottom: 26,
     backgroundColor: colors.card,
     borderTopWidth: 1,
     borderTopColor: colors.divider,

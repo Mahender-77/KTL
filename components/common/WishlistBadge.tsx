@@ -6,12 +6,13 @@ import { View, Text, StyleSheet } from "react-native";
 
 export default function WishlistBadge() {
   const { totalItems } = useWishlist();
+  const count = Math.floor(Number(totalItems) || 0);
 
-  if (totalItems <= 0) return null;
+  if (count <= 0) return null;
 
   return (
     <View style={styles.badge}>
-      <Text style={styles.text}>{totalItems > 99 ? "99+" : totalItems}</Text>
+      <Text style={styles.text}>{count > 99 ? "99+" : count}</Text>
     </View>
   );
 }

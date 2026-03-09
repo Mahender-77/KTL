@@ -9,8 +9,10 @@ import {
   ActivityIndicator,
   Image,
   Modal,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Loader from "@/components/common/Loader";
 import { useState, useCallback, useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { router, Stack } from "expo-router";
@@ -20,7 +22,13 @@ import axiosInstance from "@/constants/api/axiosInstance";
 import { colors } from "@/constants/colors";
 import { SCREEN_PADDING } from "@/constants/layout";
 
-const { width, height } = Dimensions.get("window");
+const DELIVERY_FEE = 40;
+const FREE_DELIVERY_THRESHOLD = 500;
+const TAX_RATE_PERCENT = 5;
+
+function formatPrice(value: number): string {
+  return Math.floor(value).toLocaleString();
+}
 
 interface OrderItem {
   product: {
@@ -51,6 +59,13 @@ interface Order {
   createdAt: string;
 }
 
+function getOrderCharges(order: Order) {
+  const subtotal = order.items.reduce((sum, item) => sum + (item.price ?? 0) * item.quantity, 0);
+  const deliveryFee = subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE;
+  const taxAmount = TAX_RATE_PERCENT > 0 ? (subtotal * TAX_RATE_PERCENT) / 100 : 0;
+  return { subtotal, deliveryFee, taxAmount };
+}
+
 interface TrackingData {
   deliveryPerson: {
     name: string;
@@ -65,6 +80,8 @@ interface TrackingData {
 }
 
 export default function OrdersScreen() {
+  const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
@@ -186,12 +203,7 @@ export default function OrdersScreen() {
   };
 
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Loading orders...</Text>
-      </View>
-    );
+    return <Loader variant="fullscreen" message="Loading orders..." />;
   }
 
   return (
@@ -209,7 +221,7 @@ export default function OrdersScreen() {
         />
 
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
           <View style={styles.headerBlob} />
           <TouchableOpacity
             style={styles.backBtn}
@@ -298,7 +310,7 @@ export default function OrdersScreen() {
                         </Text>
                       </View>
                       <Text style={styles.orderItemPrice}>
-                        ₹{(item.price * item.quantity).toLocaleString()}
+                        ₹{formatPrice((item.price ?? 0) * item.quantity)}
                       </Text>
                     </View>
                   ))}
@@ -329,6 +341,36 @@ export default function OrdersScreen() {
                     </Text>
                   )}
                 </View>
+
+                {/* Order charges breakdown */}
+                {(() => {
+                  const { subtotal, deliveryFee, taxAmount } = getOrderCharges(order);
+                  return (
+                    <View style={styles.chargesCard}>
+                      <View style={styles.chargesRow}>
+                        <Text style={styles.chargesLabel}>Subtotal</Text>
+                        <Text style={styles.chargesValue}>₹{formatPrice(subtotal)}</Text>
+                      </View>
+                      <View style={styles.chargesRow}>
+                        <Text style={styles.chargesLabel}>Delivery</Text>
+                        <Text style={[styles.chargesValue, deliveryFee === 0 && styles.chargesFree]}>
+                          {deliveryFee === 0 ? "FREE" : `₹${formatPrice(deliveryFee)}`}
+                        </Text>
+                      </View>
+                      {TAX_RATE_PERCENT > 0 && (
+                        <View style={styles.chargesRow}>
+                          <Text style={styles.chargesLabel}>Tax (GST {TAX_RATE_PERCENT}%)</Text>
+                          <Text style={styles.chargesValue}>₹{formatPrice(taxAmount)}</Text>
+                        </View>
+                      )}
+                      <View style={styles.chargesDivider} />
+                      <View style={styles.chargesRow}>
+                        <Text style={styles.chargesTotalLabel}>Total</Text>
+                        <Text style={styles.chargesTotalValue}>₹{formatPrice(order.totalAmount)}</Text>
+                      </View>
+                    </View>
+                  );
+                })()}
 
                 {/* Order Footer */}
                 <View style={styles.orderFooter}>
@@ -363,7 +405,7 @@ export default function OrdersScreen() {
                   <View style={styles.totalSection}>
                     <Text style={styles.totalLabel}>Total:</Text>
                     <Text style={styles.totalAmount}>
-                      ₹{order.totalAmount.toLocaleString()}
+                      ₹{formatPrice(order.totalAmount)}
                     </Text>
                   </View>
                 </View>
@@ -540,7 +582,6 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: colors.primaryDark,
-    paddingTop: 10,
     paddingBottom: 16,
     paddingHorizontal: SCREEN_PADDING,
     flexDirection: "row",
@@ -687,6 +728,49 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     lineHeight: 18,
     marginBottom: 2,
+  },
+  chargesCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chargesRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  chargesLabel: {
+    fontSize: 13,
+    color: colors.textMuted,
+    fontWeight: "500",
+  },
+  chargesValue: {
+    fontSize: 13,
+    color: colors.textPrimary,
+    fontWeight: "700",
+  },
+  chargesFree: {
+    color: colors.success,
+  },
+  chargesDivider: {
+    height: 1,
+    backgroundColor: colors.divider,
+    marginVertical: 8,
+  },
+  chargesTotalLabel: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: colors.textPrimary,
+  },
+  chargesTotalValue: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: colors.primary,
+    letterSpacing: -0.5,
   },
   orderFooter: {
     flexDirection: "row",

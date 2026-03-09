@@ -1,33 +1,20 @@
 // components/CategoryProducts.tsx
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-} from "react-native";
-import { useEffect, useState } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import axiosInstance from "@/constants/api/axiosInstance";
 import ProductGrid from "@/components/product/ProductGrid";
-import SearchBar from "@/components/common/SearchBar";
+import SearchBar, { SearchSuggestion } from "@/components/common/SearchBar";
 import { SCREEN_PADDING } from "@/constants/layout";
 import { colors } from "@/constants/colors";
-
+import Loader from "@/components/common/Loader";
+import { Product } from "@/assets/types/product";
+import { router } from "expo-router";
 
 type Category = {
   _id: string;
   name: string;
   parent: string | null;
-};
-
-type Product = {
-  _id: string;
-  name: string;
-  images: string[];
-  description: string;
-  variants: any[];
 };
 
 type Props = {
@@ -37,9 +24,11 @@ type Props = {
 
 export default function CategoryProducts({ selectedCategory, onBack }: Props) {
   const [products, setProducts] = useState<Product[]>([]);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [subCategories, setSubCategories] = useState<Category[]>([]);
   const [selectedSubCategory, setSelectedSubCategory] = useState<Category | null>(null);
   const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     if (!selectedCategory) return;
@@ -47,6 +36,20 @@ export default function CategoryProducts({ selectedCategory, onBack }: Props) {
     fetchSubCategories(selectedCategory._id);
     fetchProducts(selectedCategory._id);
   }, [selectedCategory]);
+
+  // Fetch all products once for universal search suggestions
+  useEffect(() => {
+    const fetchAllProducts = async () => {
+      try {
+        const res = await axiosInstance.get("/api/products/public");
+        const list = res.data?.data ?? res.data ?? [];
+        setAllProducts(Array.isArray(list) ? list : []);
+      } catch (error) {
+        console.log("All products fetch error:", error);
+      }
+    };
+    fetchAllProducts();
+  }, []);
 
   const fetchProducts = async (categoryId: string) => {
     try {
@@ -79,11 +82,56 @@ export default function CategoryProducts({ selectedCategory, onBack }: Props) {
     if (selectedCategory) fetchProducts(selectedCategory._id);
   };
 
+  // ── Universal search suggestions (all products) ───────────────────────────────
+
+  const searchSuggestions: SearchSuggestion[] = useMemo(() => {
+    if (!searchQuery || searchQuery.length < 2) return [];
+
+    const query = searchQuery.toLowerCase().trim();
+    const suggestions: SearchSuggestion[] = [];
+
+    allProducts.forEach((product) => {
+      if (product.name.toLowerCase().includes(query)) {
+        suggestions.push({
+          id: `product-${product._id}`,
+          name: product.name,
+          type: "product",
+          categoryName:
+            typeof product.category === "object" && product.category?.name
+              ? product.category.name
+              : selectedCategory?.name,
+        });
+      }
+    });
+
+    return suggestions.slice(0, 8);
+  }, [searchQuery, allProducts, selectedCategory]);
+
+  const handleSearchChange = useCallback((query: string) => {
+    setSearchQuery(query);
+  }, []);
+
+  const handleSuggestionSelect = useCallback((suggestion: SearchSuggestion) => {
+    if (suggestion.type === "product") {
+      const productId = suggestion.id.replace("product-", "");
+      setSearchQuery("");
+      router.push({ pathname: "/product/[id]", params: { id: productId } });
+    }
+  }, []);
+
+  // Grid below should not change when searching
+  const visibleProducts = products;
+
   return (
     <View style={styles.container}>
 
-      {/* ── Search Bar (same as home) ── */}
-      <SearchBar />
+      {/* ── Search Bar (with suggestions within this category) ── */}
+      <SearchBar
+        onSearchChange={handleSearchChange}
+        suggestions={searchSuggestions}
+        onSuggestionSelect={handleSuggestionSelect}
+        showSuggestions={true}
+      />
 
       {/* ── Breadcrumb ── */}
       <View style={styles.breadcrumb}>
@@ -146,8 +194,8 @@ export default function CategoryProducts({ selectedCategory, onBack }: Props) {
 
       {/* ── Products ── */}
       {loading ? (
-        <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
-      ) : products.length === 0 ? (
+        <Loader variant="inline" message="Loading products..." />
+      ) : visibleProducts.length === 0 ? (
         <View style={styles.emptyState}>
           <Ionicons name="basket-outline" size={48} color={colors.disabled} />
           <Text style={styles.emptyText}>No products found</Text>
@@ -158,7 +206,7 @@ export default function CategoryProducts({ selectedCategory, onBack }: Props) {
           contentContainerStyle={{ paddingBottom: 40 }}
           showsVerticalScrollIndicator={false}
         >
-          <ProductGrid products={products} />
+          <ProductGrid products={visibleProducts} responsive />
         </ScrollView>
       )}
     </View>

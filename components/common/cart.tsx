@@ -10,6 +10,7 @@ import {
   StatusBar,
   Animated,
 } from "react-native";
+import Loader from "@/components/common/Loader";
 import { useEffect, useState, useRef } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useCart } from "@/context/CartContext";
@@ -249,10 +250,7 @@ export default function CartScreen() {
       </View>
 
       {loading ? (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading your cart...</Text>
-        </View>
+        <Loader variant="fullscreen" message="Loading your cart..." />
       ) : items.length === 0 ? (
         <EmptyCart />
       ) : (

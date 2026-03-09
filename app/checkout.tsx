@@ -12,6 +12,8 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Loader from "@/components/common/Loader";
 import { useState, useEffect, useCallback } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { router, Stack } from "expo-router";
@@ -22,6 +24,15 @@ import { colors } from "@/constants/colors";
 import { SCREEN_PADDING } from "@/constants/layout";
 import { useCart } from "@/context/CartContext";
 import { Alert } from "react-native";
+
+// /** Tax rate as percentage (e.g. 5 = 5%). Set to 0 to hide tax. */
+// const TAX_RATE_PERCENT = 5;
+const FREE_DELIVERY_THRESHOLD = 500;
+
+/** Display amount as whole number (no decimals) */
+function formatPrice(value: number): string {
+  return Math.floor(value).toLocaleString();
+}
 
 interface CartItem {
   _id: string;
@@ -34,6 +45,7 @@ interface CartItem {
   quantity: number;
   price: number;
   offerPrice?: number;
+  dealDiscountPercent?: number;
 }
 
 interface Address {
@@ -57,6 +69,7 @@ interface SavedAddress {
 }
 
 export default function CheckoutScreen() {
+  const insets = useSafeAreaInsets();
   const { refreshCart } = useCart();
   const [items, setItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +81,7 @@ export default function CheckoutScreen() {
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [loadingAddresses, setLoadingAddresses] = useState(true);
+  const [storeDeliveryFee, setStoreDeliveryFee] = useState<number | null>(null);
 
   const [address, setAddress] = useState<Address>({
     name: "",
@@ -83,6 +97,19 @@ export default function CheckoutScreen() {
       setLoading(true);
       const res = await axiosInstance.get("/api/cart");
       setItems(res.data.items ?? []);
+
+      // Fetch delivery fee based on active stores (same logic as cart screen)
+      axiosInstance
+        .get("/api/stores/public")
+        .then((storeRes) => {
+          const fee = storeRes.data?.data?.[0]?.deliveryFee;
+          if (typeof fee === "number" && fee >= 0) {
+            setStoreDeliveryFee(fee);
+          }
+        })
+        .catch(() => {
+          // Fallback handled in fee computation below
+        });
     } catch (err) {
       console.log("Cart fetch error:", err);
     } finally {
@@ -137,12 +164,15 @@ export default function CheckoutScreen() {
     }, [])
   );
 
-  // Compute totals
+  // Compute totals (price from cart API is pre-tax; tax & delivery shown at checkout)
   const subtotal = items.reduce((sum, item) => {
-    const price = item.offerPrice ?? item.price ?? 0;
+    const price = item.price ?? 0;
     return sum + price * item.quantity;
   }, 0);
-  const deliveryFee = subtotal > 500 ? 0 : 40;
+  const baseDeliveryFee = storeDeliveryFee != null ? storeDeliveryFee : 40;
+  const deliveryFee =
+    subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : baseDeliveryFee;
+  // const taxAmount = TAX_RATE_PERCENT > 0 ? (subtotal * TAX_RATE_PERCENT) / 100 : 0;
   const total = subtotal + deliveryFee;
 
   // Reverse geocoding function to convert coordinates to address
@@ -280,7 +310,7 @@ export default function CheckoutScreen() {
           product: item.product._id,
           variant: item.variant,
           quantity: item.quantity,
-          price: item.offerPrice ?? item.price,
+          price: item.price ?? 0,
         })),
         totalAmount: total,
         address: address,
@@ -293,23 +323,24 @@ export default function CheckoutScreen() {
       await axiosInstance.delete("/api/cart/clear");
       await refreshCart();
       
-      // Navigate to order success or orders page
-      router.replace("/(tabs)");
-    } catch (err) {
+      // Navigate to orders page to see the placed order
+      router.replace("/orders");
+    } catch (err: any) {
       console.log("Place order error:", err);
-      Alert.alert("Error", "Failed to place order. Please try again.");
+      const data = err?.response?.data;
+      let msg = data?.message ?? err?.message ?? "Failed to place order. Please try again.";
+      if (data?.detail?.errors) {
+        const errList = Object.values(data.detail.errors).flat();
+        if (errList.length) msg = String(errList[0]);
+      }
+      Alert.alert("Error", msg);
     } finally {
       setPlacingOrder(false);
     }
   };
 
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Loading checkout...</Text>
-      </View>
-    );
+    return <Loader variant="fullscreen" message="Loading checkout..." />;
   }
 
   if (items.length === 0) {
@@ -343,7 +374,7 @@ export default function CheckoutScreen() {
         />
 
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
           <View style={styles.headerBlob} />
           <TouchableOpacity
             style={styles.backBtn}
@@ -626,7 +657,7 @@ export default function CheckoutScreen() {
 
             <View style={styles.itemsList}>
               {items.map((item) => {
-                const displayPrice = item.offerPrice ?? item.price ?? 0;
+                const displayPrice = item.price ?? 0;
                 const lineTotal = displayPrice * item.quantity;
                 return (
                   <View key={`${item.product._id}-${item.variant}`} style={styles.orderItem}>
@@ -641,7 +672,7 @@ export default function CheckoutScreen() {
                       </Text>
                       <Text style={styles.orderItemQty}>Qty: {item.quantity}</Text>
                       <Text style={styles.orderItemPrice}>
-                        ₹{lineTotal.toLocaleString()}
+                        ₹{formatPrice(lineTotal)}
                       </Text>
                     </View>
                   </View>
@@ -713,19 +744,25 @@ export default function CheckoutScreen() {
 
             <View style={styles.summaryCard}>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Subtotal</Text>
-                <Text style={styles.summaryValue}>₹{subtotal.toLocaleString()}</Text>
+                <Text style={styles.summaryLabel}>Subtotal (items)</Text>
+                <Text style={styles.summaryValue}>₹{formatPrice(subtotal)}</Text>
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Delivery</Text>
                 <Text style={[styles.summaryValue, deliveryFee === 0 && styles.freeText]}>
-                  {deliveryFee === 0 ? "FREE" : `₹${deliveryFee}`}
+                  {deliveryFee === 0 ? "FREE" : `₹${formatPrice(deliveryFee)}`}
                 </Text>
               </View>
+              {/* {TAX_RATE_PERCENT > 0 && (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Tax (GST {TAX_RATE_PERCENT}%)</Text>
+                  <Text style={styles.summaryValue}>₹{formatPrice(taxAmount)}</Text>
+                </View>
+              )} */}
               <View style={styles.divider} />
               <View style={styles.summaryRow}>
                 <Text style={styles.totalLabel}>Total</Text>
-                <Text style={styles.totalValue}>₹{total.toLocaleString()}</Text>
+                <Text style={styles.totalValue}>₹{formatPrice(total)}</Text>
               </View>
             </View>
           </View>
@@ -735,10 +772,10 @@ export default function CheckoutScreen() {
         </ScrollView>
 
         {/* Place Order Button - Fixed at bottom */}
-        <View style={styles.footer}>
+        <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
           <View style={styles.footerTotal}>
             <Text style={styles.footerTotalLabel}>Total Amount</Text>
-            <Text style={styles.footerTotalValue}>₹{total.toLocaleString()}</Text>
+            <Text style={styles.footerTotalValue}>₹{formatPrice(total)}</Text>
           </View>
           <TouchableOpacity
             style={[styles.placeOrderBtn, placingOrder && { opacity: 0.7 }]}
@@ -801,7 +838,6 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: colors.primaryDark,
-    paddingTop: 10,
     paddingBottom: 16,
     paddingHorizontal: SCREEN_PADDING,
     flexDirection: "row",
@@ -1015,7 +1051,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     paddingHorizontal: SCREEN_PADDING,
     paddingTop: 14,
-    paddingBottom: 28,
     borderTopWidth: 1,
     borderTopColor: colors.divider,
     flexDirection: "row",
