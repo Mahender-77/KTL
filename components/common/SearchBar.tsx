@@ -27,7 +27,7 @@ export default function SearchBar({
 }: Props) {
   const [query, setQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
-  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<TextInput>(null);
   const lastFocusTime = useRef<number>(0);
   const refocusTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
