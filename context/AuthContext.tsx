@@ -19,7 +19,18 @@ async function touchSession(): Promise<void> {
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  user: { name: string; email: string } | null;
+  user: {
+    name: string;
+    email: string;
+    role?: string;
+    organizationId?: string | null;
+    isSuperAdmin?: boolean;
+  } | null;
+  modules: string[];
+  permissions: string[];
+  productFields: Record<string, boolean>;
+  hasModule: (module: string) => boolean;
+  hasPermission: (permission: string) => boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -30,7 +41,10 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<{ name: string; email: string } | null>(null);
+  const [user, setUser] = useState<AuthContextType["user"]>(null);
+  const [modules, setModules] = useState<string[]>([]);
+  const [permissions, setPermissions] = useState<string[]>([]);
+  const [productFields, setProductFields] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
 
   // Try to exchange refresh token for a new access token
@@ -55,6 +69,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       delete axiosInstance.defaults.headers.common["Authorization"];
       setIsAuthenticated(false);
       setUser(null);
+      setModules([]);
+      setPermissions([]);
+      setProductFields({});
       return null;
     }
   };
@@ -62,14 +79,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const fetchUserInfo = async () => {
     try {
       const response = await axiosInstance.get("/api/auth/me");
-      setUser({
-        name: response.data.name,
-        email: response.data.email,
-      });
+      setUser(response.data?.user ?? null);
+      setModules(Array.isArray(response.data?.organization?.modules) ? response.data.organization.modules : []);
+      setPermissions(Array.isArray(response.data?.permissions) ? response.data.permissions : []);
+      setProductFields(response.data?.productFields ?? {});
     } catch (error: unknown) {
       const status = (error as { response?: { status?: number } })?.response?.status;
       console.log("Failed to fetch user info:", error);
       setUser(null);
+      setModules([]);
+      setPermissions([]);
+      setProductFields({});
       // 401/404 = invalid or expired token or user gone → clear session so user can log in again
       if (status === 401 || status === 404) {
         await AsyncStorage.removeItem(ACCESS_TOKEN_KEY);
@@ -174,7 +194,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     axiosInstance.defaults.headers.common["Authorization"] = `Bearer ${token}`;
     setIsAuthenticated(true);
-    setUser({ name, email });
+    await fetchUserInfo();
   };
 
   const logout = async () => {
@@ -184,11 +204,38 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     delete axiosInstance.defaults.headers.common["Authorization"];
     setIsAuthenticated(false);
     setUser(null);
+    setModules([]);
+    setPermissions([]);
+    setProductFields({});
+  };
+
+  const hasModule = (module: string): boolean => {
+    return modules.includes(module);
+  };
+
+  const hasPermission = (permission: string): boolean => {
+    if (permissions.includes("*")) return true;
+    if (permissions.includes(permission)) return true;
+    const mod = permission.split(".")[0];
+    if (!mod) return false;
+    return permissions.includes(`${mod}.*`) || permissions.includes(mod);
   };
 
   return (
     <AuthContext.Provider
-      value={{ isAuthenticated, user, login, register, logout, loading }}
+      value={{
+        isAuthenticated,
+        user,
+        modules,
+        permissions,
+        productFields,
+        hasModule,
+        hasPermission,
+        login,
+        register,
+        logout,
+        loading,
+      }}
     >
       {children}
     </AuthContext.Provider>
