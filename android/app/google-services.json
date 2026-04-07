@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "609018009950",
+    "project_id": "ktlstore-bf41c",
+    "storage_bucket": "ktlstore-bf41c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:609018009950:android:90792fb41093d5dce017cf",
+        "android_client_info": {
+          "package_name": "com.ktl.app123"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCBuKZbOL9kL-kg2oM2rU6p6BBSpbAmoDw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
