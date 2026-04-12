@@ -190,7 +190,6 @@ function RelatedProductCard({ product, onAddToCart, cardWidth }: { product: Prod
       setShowToast(true);
       setTimeout(() => setShowToast(false), 5000);
     } catch (err) {
-      console.log("Add to cart failed:", err);
     } finally {
       setAdding(false);
     }
@@ -368,7 +367,6 @@ export default function CartScreen() {
         fetchRelatedProducts(res.data.items);
       }
     } catch (err) {
-      console.log("Cart fetch error:", err);
     } finally {
       setLoading(false);
     }
@@ -412,7 +410,6 @@ export default function CartScreen() {
         setRelatedProducts(filtered.slice(0, 6)); // Limit to 6 products
       }
     } catch (err) {
-      console.log("Related products fetch error:", err);
     } finally {
       setLoadingRelated(false);
     }
@@ -423,7 +420,6 @@ export default function CartScreen() {
       await addToCart(productId, variantId);
       await fetchCart(); // Refresh cart to show new item
     } catch (err) {
-      console.log("Add to cart error:", err);
       throw err;
     }
   };
@@ -444,7 +440,6 @@ export default function CartScreen() {
       setItems(res.data.items ?? []);
       refreshCart();
     } catch (err) {
-      console.log("Remove error:", err);
     }
   };
 
@@ -467,7 +462,6 @@ export default function CartScreen() {
       setItems(res.data.items ?? []);
       refreshCart();
     } catch (err) {
-      console.log("Update error:", err);
     }
   };
 
@@ -510,7 +504,6 @@ export default function CartScreen() {
                 setItems([]);
                 refreshCart();
               } catch (err) {
-                console.log("Clear cart error:", err);
               }
             }}
             activeOpacity={0.7}

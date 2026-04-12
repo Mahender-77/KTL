@@ -3,6 +3,14 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-nati
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import axiosInstance from "@/constants/api/axiosInstance";
+import { fetchAllPublicProducts } from "@/constants/api/fetchPublicCatalog";
+import {
+  fetchMergedSubcategories,
+  productMatchesDisplayCategory,
+  sameDisplayCategory,
+  type CategoryRow,
+  type DisplayCategory,
+} from "@/constants/catalog/categoriesCatalog";
 import ProductGrid from "@/components/product/ProductGrid";
 import SearchBar, { SearchSuggestion } from "@/components/common/SearchBar";
 import { SCREEN_PADDING } from "@/constants/layout";
@@ -11,78 +19,71 @@ import Loader from "@/components/common/Loader";
 import { Product } from "@/assets/types/product";
 import { router } from "expo-router";
 
-type Category = {
-  _id: string;
-  name: string;
-  parent: string | null;
-};
-
 type Props = {
-  selectedCategory: Category | null;
+  selectedCategory: DisplayCategory | null;
+  flatCategories: CategoryRow[];
   onBack: () => void;
 };
 
-export default function CategoryProducts({ selectedCategory, onBack }: Props) {
+export default function CategoryProducts({ selectedCategory, flatCategories, onBack }: Props) {
   const [products, setProducts] = useState<Product[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
-  const [subCategories, setSubCategories] = useState<Category[]>([]);
-  const [selectedSubCategory, setSelectedSubCategory] = useState<Category | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [subCategories, setSubCategories] = useState<DisplayCategory[]>([]);
+  const [selectedSubCategory, setSelectedSubCategory] = useState<DisplayCategory | null>(null);
+  const [subLoading, setSubLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const list = await fetchAllPublicProducts(axiosInstance);
+        setAllProducts(list);
+      } catch {
+      }
+    };
+    load();
+  }, []);
 
   useEffect(() => {
     if (!selectedCategory) return;
     setSelectedSubCategory(null);
-    fetchSubCategories(selectedCategory._id);
-    fetchProducts(selectedCategory._id);
+    let cancelled = false;
+    (async () => {
+      setSubLoading(true);
+      try {
+        const subs = await fetchMergedSubcategories(axiosInstance, selectedCategory);
+        if (!cancelled) setSubCategories(subs);
+      } catch {
+        if (!cancelled) setSubCategories([]);
+      } finally {
+        if (!cancelled) setSubLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [selectedCategory]);
 
-  // Fetch all products once for universal search suggestions
   useEffect(() => {
-    const fetchAllProducts = async () => {
-      try {
-        const res = await axiosInstance.get("/api/products/public");
-        const list = res.data?.data ?? res.data ?? [];
-        setAllProducts(Array.isArray(list) ? list : []);
-      } catch (error) {
-        console.log("All products fetch error:", error);
-      }
-    };
-    fetchAllProducts();
-  }, []);
-
-  const fetchProducts = async (categoryId: string) => {
-    try {
-      setLoading(true);
-      const res = await axiosInstance.get(`/api/products/public?category=${categoryId}`);
-      setProducts(res.data?.data ?? []);
-    } catch (error) {
-      console.log("Product fetch error:", error);
-    } finally {
-      setLoading(false);
+    if (!selectedCategory) {
+      setProducts([]);
+      return;
     }
-  };
-
-  const fetchSubCategories = async (parentId: string) => {
-    try {
-      const res = await axiosInstance.get(`/api/categories/${parentId}/subcategories`);
-      setSubCategories(res.data);
-    } catch (error) {
-      console.log("Sub category error:", error);
+    const target = selectedSubCategory ?? selectedCategory;
+    if (!allProducts.length) {
+      setProducts([]);
+      return;
     }
-  };
+    setProducts(allProducts.filter((p) => productMatchesDisplayCategory(p, target)));
+  }, [selectedCategory, selectedSubCategory, allProducts]);
 
-  const handleSubCategorySelect = (sub: Category) => {
+  const handleSubCategorySelect = (sub: DisplayCategory) => {
     setSelectedSubCategory(sub);
-    fetchProducts(sub._id);
   };
 
   const handleBackToParent = () => {
     setSelectedSubCategory(null);
-    if (selectedCategory) fetchProducts(selectedCategory._id);
   };
-
-  // ── Universal search suggestions (all products) ───────────────────────────────
 
   const searchSuggestions: SearchSuggestion[] = useMemo(() => {
     if (!searchQuery || searchQuery.length < 2) return [];
@@ -119,13 +120,11 @@ export default function CategoryProducts({ selectedCategory, onBack }: Props) {
     }
   }, []);
 
-  // Grid below should not change when searching
+  const catalogLoading = allProducts.length === 0;
   const visibleProducts = products;
 
   return (
     <View style={styles.container}>
-
-      {/* ── Search Bar (with suggestions within this category) ── */}
       <SearchBar
         onSearchChange={handleSearchChange}
         suggestions={searchSuggestions}
@@ -133,9 +132,7 @@ export default function CategoryProducts({ selectedCategory, onBack }: Props) {
         showSuggestions={true}
       />
 
-      {/* ── Breadcrumb ── */}
       <View style={styles.breadcrumb}>
-        {/* Home icon */}
         <TouchableOpacity
           onPress={onBack}
           activeOpacity={0.7}
@@ -147,7 +144,6 @@ export default function CategoryProducts({ selectedCategory, onBack }: Props) {
 
         <Ionicons name="chevron-forward" size={16} color={colors.disabled} style={styles.chevron} />
 
-        {/* Parent category */}
         <TouchableOpacity
           onPress={selectedSubCategory ? handleBackToParent : undefined}
           activeOpacity={selectedSubCategory ? 0.7 : 1}
@@ -159,7 +155,6 @@ export default function CategoryProducts({ selectedCategory, onBack }: Props) {
           </Text>
         </TouchableOpacity>
 
-        {/* Sub-category segment */}
         {selectedSubCategory && (
           <>
             <Ionicons name="chevron-forward" size={13} color={colors.disabled} style={styles.chevron} />
@@ -168,32 +163,37 @@ export default function CategoryProducts({ selectedCategory, onBack }: Props) {
         )}
       </View>
 
-      {/* ── Sub-category chips ── */}
-      {subCategories.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipRow}
-          style={styles.chipScroll}
-        >
-          {subCategories.map((sub) => (
-            <TouchableOpacity
-              key={sub._id}
-              style={[styles.chip, selectedSubCategory?._id === sub._id && styles.chipActive]}
-              onPress={() => handleSubCategorySelect(sub)}
-              activeOpacity={0.75}
-              hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
-            >
-              <Text style={[styles.chipText, selectedSubCategory?._id === sub._id && styles.chipTextActive]}>
-                {sub.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+      {subLoading ? (
+        <View style={styles.subLoading}>
+          <Loader variant="inline" message="Loading subcategories..." />
+        </View>
+      ) : (
+        subCategories.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipRow}
+            style={styles.chipScroll}
+          >
+            {subCategories.map((sub) => {
+              const selected = sameDisplayCategory(selectedSubCategory, sub);
+              return (
+                <TouchableOpacity
+                  key={sub.slug || sub._id}
+                  style={[styles.chip, selected && styles.chipActive]}
+                  onPress={() => handleSubCategorySelect(sub)}
+                  activeOpacity={0.75}
+                  hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                >
+                  <Text style={[styles.chipText, selected && styles.chipTextActive]}>{sub.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )
       )}
 
-      {/* ── Products ── */}
-      {loading ? (
+      {catalogLoading ? (
         <Loader variant="inline" message="Loading products..." />
       ) : visibleProducts.length === 0 ? (
         <View style={styles.emptyState}>
@@ -206,7 +206,7 @@ export default function CategoryProducts({ selectedCategory, onBack }: Props) {
           contentContainerStyle={{ paddingBottom: 40 }}
           showsVerticalScrollIndicator={false}
         >
-          <ProductGrid products={visibleProducts} responsive />
+          <ProductGrid products={visibleProducts} categories={flatCategories} responsive />
         </ScrollView>
       )}
     </View>
@@ -217,6 +217,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  subLoading: {
+    paddingVertical: 8,
   },
   breadcrumb: {
     flexDirection: "row",
@@ -243,7 +246,7 @@ const styles = StyleSheet.create({
   chipScroll: {
     paddingHorizontal: SCREEN_PADDING,
     marginVertical: 12,
-    flexGrow: 0,         // prevent chipScroll from expanding and eating layout space
+    flexGrow: 0,
   },
   chipRow: {
     gap: 8,

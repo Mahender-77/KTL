@@ -25,12 +25,21 @@ import WishlistBadge from "@/components/common/WishlistBadge";
 import CategoryProducts from "@/components/CategoryProducts";
 import ProductGrid from "@/components/product/ProductGrid";
 import SectionHeader from "@/components/common/SectionHeader";
+import Loader from "@/components/common/Loader";
 import { SCREEN_PADDING } from "@/constants/layout";
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { router, useNavigation } from "expo-router";
 import axiosInstance from "@/constants/api/axiosInstance";
+import { fetchAllPublicProducts } from "@/constants/api/fetchPublicCatalog";
+import {
+  fetchCategoryCatalog,
+  mergeCategoryRow,
+  normalizeCategoryKey,
+  type CategoryRow,
+  type DisplayCategory,
+} from "@/constants/catalog/categoriesCatalog";
 import { Product } from "@/assets/types/product";
 import { SearchSuggestion } from "@/components/common/SearchBar";
 
@@ -83,14 +92,6 @@ const menu = StyleSheet.create({
   },
 });
 
-type Category = {
-  _id: string;
-  name: string;
-  slug: string;
-  parent: string | null;
-  children?: Category[];
-};
-
 type Store = {
   _id: string;
   name: string;
@@ -107,10 +108,13 @@ export default function HomeScreen() {
   const navigation = useNavigation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<DisplayCategory | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [allProducts, setAllProducts] = useState<Product[]>([]);
-  const [allCategories, setAllCategories] = useState<Category[]>([]);
+  /** Flattened tree from all orgs — used for lookups and merged display. */
+  const [flatCategories, setFlatCategories] = useState<CategoryRow[]>([]);
+  /** Top-level categories, one per slug across organizations. */
+  const [parentCategories, setParentCategories] = useState<DisplayCategory[]>([]);
   const [allStores, setAllStores] = useState<Store[]>([]);
   const [selectedStore, setSelectedStore] = useState<Store | null>(null);
   const [loading, setLoading] = useState(false);
@@ -124,34 +128,18 @@ export default function HomeScreen() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [productsRes, categoriesRes, storesRes] = await Promise.all([
-          axiosInstance.get("/api/products/public"),
-          axiosInstance.get("/api/categories"),
-          axiosInstance.get("/api/stores"),
+        const [safeProducts, catalog, storesRes] = await Promise.all([
+          fetchAllPublicProducts(axiosInstance),
+          fetchCategoryCatalog(axiosInstance),
+          axiosInstance.get("/api/stores/public"),
         ]);
 
-        // Paginated response: data lives under .data.data
-        const productsList = productsRes.data?.data ?? productsRes.data ?? [];
-        const safeProducts: Product[] = Array.isArray(productsList) ? productsList : [];
-        if (safeProducts.length > 0 && (!safeProducts[0]._id || !safeProducts[0].images)) {
-          console.warn("[Products] Missing _id/images — API may be wrong server. Check backend terminal for '[getPublicProducts] Request received'");
-        }
         setAllProducts(safeProducts);
-
-        // Flatten category tree
-        const flatCategories: Category[] = [];
-        const flatten = (cats: Category[]) => {
-          cats.forEach((cat) => {
-            flatCategories.push(cat);
-            if (cat.children?.length) flatten(cat.children);
-          });
-        };
-        flatten(categoriesRes.data || []);
-        setAllCategories(flatCategories);
+        setFlatCategories(catalog.flatAll);
+        setParentCategories(catalog.mergedParents);
 
         setAllStores(storesRes.data?.data ?? []);
       } catch (error) {
-        console.log("Error fetching data:", error);
       } finally {
         setLoading(false);
       }
@@ -180,7 +168,7 @@ export default function HomeScreen() {
       if (product.name.toLowerCase().includes(query)) {
         const catObj  = product.category;
         const catId   = typeof catObj === "object" && catObj?._id ? catObj._id : catObj as string;
-        const category = allCategories.find((c) => c._id === catId);
+        const category = flatCategories.find((c) => c._id === catId);
         suggestions.push({
           id:           `product-${product._id}`,
           name:         product.name,
@@ -190,10 +178,13 @@ export default function HomeScreen() {
       }
     });
 
-    allCategories.forEach((category) => {
-      if (category.name.toLowerCase().includes(query)) {
-        suggestions.push({ id: `category-${category._id}`, name: category.name, type: "category" });
-      }
+    const seenCat = new Set<string>();
+    flatCategories.forEach((category) => {
+      if (!category.name.toLowerCase().includes(query)) return;
+      const dedupeKey = `${String(category.parent ?? "")}:${normalizeCategoryKey(category)}`;
+      if (seenCat.has(dedupeKey)) return;
+      seenCat.add(dedupeKey);
+      suggestions.push({ id: `category-${category._id}`, name: category.name, type: "category" });
     });
 
     allStores.forEach((store) => {
@@ -203,7 +194,7 @@ export default function HomeScreen() {
     });
 
     return suggestions.slice(0, 8);
-  }, [searchQuery, allProducts, allCategories, allStores]);
+  }, [searchQuery, allProducts, flatCategories, allStores]);
 
   // ── Store product filter — FIX: use stockByStoreVariant not .inventory ──────
 
@@ -225,11 +216,9 @@ export default function HomeScreen() {
 
   const handleSuggestionSelect = useCallback((suggestion: SearchSuggestion) => {
     if (suggestion.type === "category") {
-      const category = allCategories.find(
-        (c) => c._id === suggestion.id.replace("category-", "")
-      );
-      if (category) {
-        setSelectedCategory(category);
+      const row = flatCategories.find((c) => c._id === suggestion.id.replace("category-", ""));
+      if (row) {
+        setSelectedCategory(mergeCategoryRow(row, flatCategories));
         setSelectedStore(null);
         setSearchQuery("");
       }
@@ -243,7 +232,7 @@ export default function HomeScreen() {
       setSearchQuery("");
       router.push({ pathname: "/product/[id]", params: { id: productId } });
     }
-  }, [allCategories, allStores]);
+  }, [flatCategories, allStores]);
 
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     setScrolled(e.nativeEvent.contentOffset.y > 10);
@@ -305,6 +294,7 @@ export default function HomeScreen() {
       {selectedCategory ? (
         <CategoryProducts
           selectedCategory={selectedCategory}
+          flatCategories={flatCategories}
           onBack={() => {
             setSelectedCategory(null);
             setSearchQuery("");
@@ -334,7 +324,7 @@ export default function HomeScreen() {
               <SectionHeader title={`Products at ${selectedStore.name}`} />
             </View>
             {productsByStore.length > 0 ? (
-              <ProductGrid products={productsByStore} responsive />
+              <ProductGrid products={productsByStore} categories={flatCategories} responsive />
             ) : (
               <View style={styles.emptyState}>
                 <Ionicons name="basket-outline" size={48} color={colors.disabled} />
@@ -364,14 +354,27 @@ export default function HomeScreen() {
             keyboardShouldPersistTaps="always"
             keyboardDismissMode="none"
           >
-            <CategoriesList onSelectCategory={setSelectedCategory} />
+            <CategoriesList
+              categories={parentCategories}
+              onSelectCategory={setSelectedCategory}
+              loading={loading}
+            />
             <BannerSlider />
             <DealOfTheDay />
 
             <View style={{ paddingHorizontal: SCREEN_PADDING, marginTop: 16 }}>
-              <SectionHeader title="🔥 Featured Products" />
+              <SectionHeader title="All products" />
+              <Text style={styles.catalogSubtitle}>
+                {loading && allProducts.length === 0
+                  ? "Loading catalog…"
+                  : `${allProducts.length} product${allProducts.length === 1 ? "" : "s"} · prices, offers & availability`}
+              </Text>
             </View>
-            <ProductGrid products={allProducts.slice(0, 10)} responsive />
+            {loading && allProducts.length === 0 ? (
+              <Loader variant="inline" message="Loading products…" />
+            ) : (
+              <ProductGrid products={allProducts} categories={flatCategories} responsive />
+            )}
 
             {/* Promo box */}
             <View style={styles.promoBox}>
@@ -423,15 +426,27 @@ export default function HomeScreen() {
             </View>
 
             <View style={styles.menuBody}>
-              {/* FIX: Removed navigation to "products" and "profile" routes that don't exist yet.
-                  Add them back once you create app/(tabs)/products.tsx and app/(tabs)/profile.tsx */}
-              <MenuItem icon="grid-outline"          label="Products" />
+              <MenuItem
+                icon="grid-outline"
+                label="Products"
+                onPress={() => {
+                  closeMenu();
+                  router.push("/(tabs)/products" as any);
+                }}
+              />
               <MenuItem
                 icon="receipt-outline"
                 label="Orders"
                 onPress={() => { closeMenu(); router.push("/orders" as any); }}
               />
-              <MenuItem icon="person-outline"        label="Profile" />
+              <MenuItem
+                icon="person-outline"
+                label="Profile"
+                onPress={() => {
+                  closeMenu();
+                  router.push("/(tabs)/profile" as any);
+                }}
+              />
               <MenuItem icon="notifications-outline" label="Notifications" />
 
               <TouchableOpacity
@@ -487,6 +502,13 @@ const styles = StyleSheet.create({
   promoTags: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
   promoTag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.12)", borderWidth: 1, borderColor: "rgba(255,255,255,0.2)" },
   promoTagText: { fontSize: 10, color: "#fff", fontWeight: "600" },
+  catalogSubtitle: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: 4,
+    marginBottom: 4,
+    fontWeight: "500",
+  },
   menuOverlayWrap: { zIndex: 9998, elevation: 9998 },
   overlay: { flex: 1, backgroundColor: "#000" },
   sideMenu: { position: "absolute", top: 0, right: 0, height: "100%", backgroundColor: colors.card, zIndex: 9999, elevation: 9999, shadowColor: "#000", shadowOffset: { width: -4, height: 0 }, shadowOpacity: 0.15, shadowRadius: 12 },

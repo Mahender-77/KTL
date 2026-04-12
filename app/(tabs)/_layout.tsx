@@ -1,15 +1,16 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "@/constants/colors";
+import { coerceNavBooleanOptions } from "@/constants/navigation/coerceNavOptions";
 
 export default function TabLayout() {
   return (
     <Tabs
-      screenOptions={{
+      screenOptions={coerceNavBooleanOptions({
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: "#888",
-      }}
+      })}
     >
       <Tabs.Screen
         name="index"

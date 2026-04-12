@@ -248,7 +248,6 @@ export default function ProductDetailScreen({
       if (liked) await removeFromWishlist(product._id);
       else await addToWishlist(product._id);
     } catch (err) {
-      console.log("Wishlist toggle error:", err);
     }
   };
 

@@ -1,21 +1,10 @@
 // components/home/CategoriesList.tsx
-import { ScrollView, StyleSheet, View } from "react-native";
-import { useEffect, useState } from "react";
+import { ScrollView, StyleSheet, View, ActivityIndicator } from "react-native";
 import CategoryItem from "./CategoryItem";
-import axiosInstance from "@/constants/api/axiosInstance";
 import { Ionicons } from "@expo/vector-icons";
 import { SCREEN_PADDING } from "@/constants/layout";
-
-type Category = {
-  _id: string;
-  name: string;
-  slug: string;
-  parent: string | null;
-};
-
-type Props = {
-  onSelectCategory: (category: Category) => void;
-};
+import type { DisplayCategory } from "@/constants/catalog/categoriesCatalog";
+import { colors } from "@/constants/colors";
 
 const categoryIconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
   garlic: "leaf-outline",
@@ -30,41 +19,37 @@ const categoryIconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
   meat: "restaurant-outline",
 };
 
-export default function CategoriesList({ onSelectCategory }: Props) {
-  const [categories, setCategories] = useState<Category[]>([]);
+type Props = {
+  categories: DisplayCategory[];
+  onSelectCategory: (category: DisplayCategory) => void;
+  loading?: boolean;
+};
 
-  useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const res = await axiosInstance.get("/api/categories");
-        const parentCategories = res.data.filter(
-          (cat: Category) => !cat.parent
-        );
-        setCategories(parentCategories);
-      } catch (error) {
-        console.log("Category fetch error:", error);
-      }
-    };
-
-    fetchCategories();
-  }, []);
-
+export default function CategoriesList({ categories, onSelectCategory, loading }: Props) {
   return (
     <View style={styles.wrapper}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: SCREEN_PADDING }}
-      >
-        {categories.map((item) => (
-          <CategoryItem
-            key={item._id}
-            title={item.name}
-            icon={categoryIconMap[item.slug.toLowerCase()] || "grid-outline"}
-            onPress={() => onSelectCategory(item)}
-          />
-        ))}
-      </ScrollView>
+      {loading && categories.length === 0 ? (
+        <View style={styles.loadingRow}>
+          <ActivityIndicator size="small" color={colors.primary} />
+        </View>
+      ) : (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: SCREEN_PADDING }}
+        >
+          {categories.map((item) => (
+            <CategoryItem
+              key={item.slug || item._id}
+              title={item.name}
+              icon={
+                categoryIconMap[(item.slug || "").toLowerCase()] || "grid-outline"
+              }
+              onPress={() => onSelectCategory(item)}
+            />
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -73,5 +58,10 @@ const styles = StyleSheet.create({
   wrapper: {
     marginTop: 10,
     marginBottom: 20,
+  },
+  loadingRow: {
+    paddingHorizontal: SCREEN_PADDING,
+    paddingVertical: 16,
+    alignItems: "center",
   },
 });

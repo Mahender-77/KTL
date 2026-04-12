@@ -6,15 +6,36 @@ import { Product } from "@/assets/types/product";
 import { SCREEN_PADDING, CARD_GAP, useLayout } from "@/constants/layout";
 import { colors } from "@/constants/colors";
 
+function categoryLabelFor(
+  item: Product,
+  categories?: { _id: string; name: string }[]
+): string | undefined {
+  if (typeof item.category === "object" && item.category && "name" in item.category) {
+    return (item.category as { name: string }).name;
+  }
+  if (typeof item.category === "string" && categories?.length) {
+    return categories.find((c) => c._id === item.category)?.name;
+  }
+  return undefined;
+}
+
 type Props = {
   products?: Product[];
+  /** When products only have category ids, pass the loaded category list to show names on cards */
+  categories?: { _id: string; name: string }[];
   onRemove?: (productId: string) => void;
   showRemoveButton?: boolean;
   /** When true, card size adapts to current screen width (use on main product grids) */
   responsive?: boolean;
 };
 
-export default function ProductGrid({ products = [], onRemove, showRemoveButton = false, responsive = false }: Props) {
+export default function ProductGrid({
+  products = [],
+  categories,
+  onRemove,
+  showRemoveButton = false,
+  responsive = false,
+}: Props) {
   const layout = useLayout();
   const cardWidth = responsive ? layout.cardWidth : undefined;
   const cardHeight = responsive ? layout.cardHeight : undefined;
@@ -36,7 +57,9 @@ export default function ProductGrid({ products = [], onRemove, showRemoveButton 
       scrollEnabled={false}
       contentContainerStyle={styles.container}
       columnWrapperStyle={styles.row}
-      renderItem={({ item, index }) => (
+      renderItem={({ item, index }) => {
+        const categoryLabel = categoryLabelFor(item, categories);
+        return (
         <View style={showRemoveButton ? styles.cardWrapper : undefined}>
           <ProductCard
             id={item._id ?? (item as any).id ?? `product-${index}`}
@@ -50,6 +73,7 @@ export default function ProductGrid({ products = [], onRemove, showRemoveButton 
             nearestExpiry={item.nearestExpiry}
             variants={item.variants ?? []}
             description={item.description}
+            categoryLabel={categoryLabel}
             tags={item.tags}
             taxRate={item.taxRate}
             minOrderQty={item.minOrderQty}
@@ -67,7 +91,8 @@ export default function ProductGrid({ products = [], onRemove, showRemoveButton 
             </TouchableOpacity>
           )}
         </View>
-      )}
+        );
+      }}
     />
   );
 }

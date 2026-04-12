@@ -21,6 +21,7 @@ import * as Linking from "expo-linking";
 import axiosInstance from "@/constants/api/axiosInstance";
 import { colors } from "@/constants/colors";
 import { SCREEN_PADDING } from "@/constants/layout";
+import { coerceNavBooleanOptions } from "@/constants/navigation/coerceNavOptions";
 
 const DELIVERY_FEE = 40;
 const FREE_DELIVERY_THRESHOLD = 500;
@@ -97,7 +98,6 @@ export default function OrdersScreen() {
       const res = await axiosInstance.get("/api/orders");
       setOrders(res.data?.data ?? []);
     } catch (err) {
-      console.log("Fetch orders error:", err);
     } finally {
       if (showLoading) {
         setLoading(false);
@@ -136,7 +136,6 @@ export default function OrdersScreen() {
         
         // Location data updated - will be displayed in the UI
       } catch (err) {
-        console.log("Fetch tracking error:", err);
       } finally {
         setMapLoading(false);
       }
@@ -209,9 +208,11 @@ export default function OrdersScreen() {
   return (
     <>
       <Stack.Screen
-        options={{
+        options={coerceNavBooleanOptions({
           headerShown: false,
-        }}
+          animationMatchesGesture: false,
+          freezeOnBlur: false,
+        })}
       />
       <View style={styles.container}>
         <StatusBar

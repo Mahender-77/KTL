@@ -39,7 +39,6 @@ export const WishlistProvider = ({ children }: { children: React.ReactNode }) =>
       // Handle both object format (with _id) and string format
       setProductIds(products.map((p: any) => (typeof p === 'string' ? p : p._id || p.toString())));
     } catch (err) {
-      console.log("Wishlist fetch error:", err);
     }
   };
 
@@ -56,7 +55,6 @@ export const WishlistProvider = ({ children }: { children: React.ReactNode }) =>
       setTotalItems(res.data.totalItems ?? 0);
       setProductIds((prev) => [...prev, productId]);
     } catch (err: any) {
-      console.log("Add to wishlist error:", err);
       // If product already in wishlist, just update the state
       if (err.response?.status === 400 && err.response?.data?.message?.includes("already")) {
         setProductIds((prev) => (prev.includes(productId) ? prev : [...prev, productId]));
@@ -76,7 +74,6 @@ export const WishlistProvider = ({ children }: { children: React.ReactNode }) =>
       setTotalItems(res.data.totalItems ?? 0);
       setProductIds((prev) => prev.filter((id) => id !== productId));
     } catch (err) {
-      console.log("Remove from wishlist error:", err);
       throw err;
     } finally {
       setLoading(false);

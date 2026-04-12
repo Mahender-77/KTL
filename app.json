@@ -7,12 +7,15 @@
     "icon": "./assets/images/icon.png",
     "scheme": "ktl",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "KTL needs your location to find your delivery address.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "KTL needs your location to find your delivery address."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "KTL needs your location to find your delivery address.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
       }
     },
     "android": {
@@ -24,11 +27,16 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
+      "usesCleartextTraffic": true,
+
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ],
-      "softwareKeyboardLayoutMode": "pan"
+      "softwareKeyboardLayoutMode": "pan",
+      "package": "com.ktl.app123"
     },
     "web": {
       "output": "static",
@@ -53,11 +61,22 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Allow KTL to use your location to find your delivery address."
         }
-      ]
+      ],
+      "expo-secure-store",
+      "expo-notifications",
+      "expo-font",
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
-    }
+      "reactCompiler": false
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3a0e283f-6553-46a8-b541-c91d288c0935"
+      }
+    },
+    "owner": "mahi-77"
   }
 }

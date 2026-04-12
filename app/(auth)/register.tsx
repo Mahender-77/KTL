@@ -15,6 +15,46 @@ import { useRouter } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "@/constants/colors";
+import axios from "axios";
+
+function firstValidationMessage(errors: unknown): string | null {
+  if (typeof errors === "string") return errors;
+  if (Array.isArray(errors)) {
+    for (const item of errors) {
+      const m = firstValidationMessage(item);
+      if (m) return m;
+    }
+    return null;
+  }
+  if (errors && typeof errors === "object") {
+    for (const v of Object.values(errors)) {
+      const m = firstValidationMessage(v);
+      if (m) return m;
+    }
+  }
+  return null;
+}
+
+function formatRegisterError(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data as
+      | { message?: string; detail?: { errors?: unknown } }
+      | undefined;
+    if (data?.message) {
+      const fieldMsg = firstValidationMessage(data.detail?.errors);
+      if (fieldMsg) return fieldMsg;
+      return data.message;
+    }
+    if (error.code === "ECONNABORTED") {
+      return "Request timed out. Check that the API server is running and reachable.";
+    }
+    if (!error.response && error.message === "Network Error") {
+      return "Cannot reach the server. On a phone, use your PC's LAN IP in EXPO_PUBLIC_API_URL (same Wi‑Fi), ensure the API is listening on 0.0.0.0, and rebuild the app after changing Android cleartext settings.";
+    }
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return "Registration failed";
+}
 
 export default function Register() {
   const { register, logout } = useAuth();
@@ -51,8 +91,8 @@ export default function Register() {
       // Logout to clear auto-login, then redirect to login page
       await logout();
       router.replace("/(auth)/login");
-    } catch (error: any) {
-      alert(error.response?.data?.message || "Registration failed");
+    } catch (error: unknown) {
+      alert(formatRegisterError(error));
     } finally {
       setLoading(false);
     }
