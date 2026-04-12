@@ -1,5 +1,5 @@
 import axios from "axios";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getAccessToken, touchLastActivity } from "@/constants/authTokenStorage";
 
 function resolveApiBaseUrl(): string {
   const fromEnv = process.env.EXPO_PUBLIC_API_URL?.trim();
@@ -21,7 +21,7 @@ const axiosInstance = axios.create({
 
 axiosInstance.interceptors.request.use(
   async (config) => {
-    const token = await AsyncStorage.getItem("accessToken");
+    const token = await getAccessToken();
     if (token) {
       config.headers["Authorization"] = `Bearer ${token}`;
     }
@@ -30,28 +30,17 @@ axiosInstance.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-const LAST_ACTIVITY_KEY = "authLastActivityAt";
-
 axiosInstance.interceptors.response.use(
   async (response) => {
     if (response.config.headers?.["Authorization"]) {
-      await AsyncStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
+      await touchLastActivity();
     }
     if (
       response.config.url?.includes("/products/public") &&
       !response.config.url?.includes("/public/")
     ) {
       const fromBackend = response.headers["x-ktl-backend"];
-      console.log(
-        "[API] Products response from KTL backend:",
-        !!fromBackend,
-        "| URL:",
-        String(response.config.baseURL) + String(response.config.url),
-      );
       if (!fromBackend) {
-        console.warn(
-          "[API] Response missing X-KTL-Backend header — request may be hitting a different server!",
-        );
       }
     }
     return response;

@@ -33,7 +33,6 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
       const res = await axiosInstance.get("/api/cart");
       setTotalItems(res.data.totalItems ?? 0);
     } catch (err) {
-      console.log("Cart fetch error:", err);
     }
   };
 
@@ -47,7 +46,6 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
       });
       setTotalItems(res.data.totalItems ?? 0);
     } catch (err) {
-      console.log("Add to cart error:", err);
       throw err;
     } finally {
       setLoading(false);
@@ -62,7 +60,6 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
       });
       setTotalItems(res.data.totalItems ?? 0);
     } catch (err) {
-      console.log("Remove from cart error:", err);
       throw err;
     } finally {
       setLoading(false);

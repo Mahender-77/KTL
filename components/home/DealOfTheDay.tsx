@@ -84,7 +84,6 @@ export default function DealOfTheDay() {
         const data = res.data?.data ?? [];
         setProducts(Array.isArray(data) ? data : []);
       } catch (err) {
-        console.log("[DealOfTheDay] Fetch error:", err);
         setProducts([]);
       } finally {
         setLoading(false);

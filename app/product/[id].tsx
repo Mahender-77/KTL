@@ -6,6 +6,7 @@ import axiosInstance from "@/constants/api/axiosInstance";
 import Loader from "@/components/common/Loader";
 import { Product } from "@/assets/types/product";
 import ProductDetailScreen from "@/components/product/Productdetailscreen";
+import { coerceNavBooleanOptions } from "@/constants/navigation/coerceNavOptions";
 // ✅ Match EXACT filename casing on disk
 
 
@@ -45,7 +46,6 @@ export default function ProductDetailRoute() {
         setSimilarProducts([]);
       }
     } catch (err) {
-      console.log("Product fetch error:", err);
       setError(true);
     } finally {
       setLoading(false);
@@ -57,10 +57,12 @@ export default function ProductDetailRoute() {
   return (
     <>
       <Stack.Screen
-        options={{
+        options={coerceNavBooleanOptions({
           headerShown: false,
-          animation: "slide_from_right",
-        }}
+          animation: "slide_from_right" as const,
+          animationMatchesGesture: false,
+          freezeOnBlur: false,
+        })}
       />
 
       {loading && <Loader variant="fullscreen" message="Loading product..." />}
@@ -77,7 +79,6 @@ export default function ProductDetailRoute() {
           similarProducts={similarProducts}
           onBack={() => router.back()}
           onAddToCart={(p, variant, qty) => {
-            console.log("Add to cart:", p.name, variant, qty);
           }}
         />
       )}

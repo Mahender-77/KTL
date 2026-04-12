@@ -82,9 +82,9 @@ export default function Toast({
   return (
     <Modal
       visible={visible}
-      transparent
+      transparent={true}
       animationType="none"
-      statusBarTranslucent
+      statusBarTranslucent={true}
       onRequestClose={hideToast}
     >
       <View style={styles.container} pointerEvents="box-none">

@@ -56,6 +56,8 @@ type Props = {
   variants?: Variant[];
   description?: string;
   badge?: string;
+  /** Category name when API populates category as an object */
+  categoryLabel?: string;
   rating?: number;
   tags?: string[];
   taxRate?: number | null;
@@ -78,6 +80,7 @@ export default function ProductCard({
   hasExpiry,
   nearestExpiry,
   variants = [],
+  categoryLabel,
   rating,
   taxRate,
   cardWidth: propCardWidth,
@@ -112,7 +115,6 @@ export default function ProductCard({
       if (isWishlisted) await removeFromWishlist(id);
       else await addToWishlist(id);
     } catch (err) {
-      console.log("Wishlist toggle error:", err);
     }
   };
 
@@ -168,6 +170,11 @@ export default function ProductCard({
         )}
 
         <Text style={styles.name} numberOfLines={2}>{name}</Text>
+        {categoryLabel ? (
+          <Text style={styles.categoryLabel} numberOfLines={1}>
+            {categoryLabel}
+          </Text>
+        ) : null}
 
         <View style={styles.priceRow}>
           {originalPrice != null && (
@@ -286,6 +293,12 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: colors.textPrimary,
     lineHeight: 18,
+  },
+  categoryLabel: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 2,
+    fontWeight: "500",
   },
   unitLabel: {
     fontSize: 10,

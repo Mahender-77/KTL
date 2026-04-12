@@ -10,7 +10,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useState, useEffect, useCallback } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { Stack, useFocusEffect } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import axiosInstance from "@/constants/api/axiosInstance";
 import { Product } from "@/assets/types/product";
 import ProductGrid from "@/components/product/ProductGrid";
@@ -46,7 +46,6 @@ export default function WishlistScreen() {
       const formattedProducts: Product[] = wishlistProducts
         .filter((p: any) => {
           if (!p || !p._id) {
-            console.warn("Invalid product in wishlist:", p);
             return false;
           }
           return true;
@@ -82,7 +81,6 @@ export default function WishlistScreen() {
 
       setProducts(formattedProducts);
     } catch (err) {
-      console.log("Fetch wishlist error:", err);
       setProducts([]);
     } finally {
       setLoading(false);
@@ -127,7 +125,6 @@ export default function WishlistScreen() {
               // Refresh to ensure sync
               await fetchWishlist();
             } catch (err) {
-              console.log("Remove from wishlist error:", err);
               Alert.alert("Error", "Failed to remove product from wishlist");
             } finally {
               setRemoving(null);
@@ -141,7 +138,6 @@ export default function WishlistScreen() {
   if (!isAuthenticated) {
     return (
       <>
-        <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.container}>
           <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} translucent={false} />
           <View style={styles.emptyContainer}>
@@ -158,7 +154,6 @@ export default function WishlistScreen() {
 
   return (
       <>
-        <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.container}>
           <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} translucent={false} />
 

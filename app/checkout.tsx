@@ -24,6 +24,7 @@ import { colors } from "@/constants/colors";
 import { SCREEN_PADDING } from "@/constants/layout";
 import { useCart } from "@/context/CartContext";
 import { Alert } from "react-native";
+import { coerceNavBooleanOptions } from "@/constants/navigation/coerceNavOptions";
 
 // /** Tax rate as percentage (e.g. 5 = 5%). Set to 0 to hide tax. */
 // const TAX_RATE_PERCENT = 5;
@@ -111,7 +112,6 @@ export default function CheckoutScreen() {
           // Fallback handled in fee computation below
         });
     } catch (err) {
-      console.log("Cart fetch error:", err);
     } finally {
       setLoading(false);
     }
@@ -151,7 +151,6 @@ export default function CheckoutScreen() {
         setAddressMode("saved");
       }
     } catch (err) {
-      console.log("Fetch addresses error:", err);
     } finally {
       setLoadingAddresses(false);
     }
@@ -208,7 +207,6 @@ export default function CheckoutScreen() {
       }
       return null;
     } catch (error) {
-      console.log("Reverse geocoding error:", error);
       return null;
     }
   };
@@ -257,7 +255,6 @@ export default function CheckoutScreen() {
         );
       }
     } catch (error) {
-      console.log("Location error:", error);
       setLocationError("Failed to get location. Please try again.");
       Alert.alert(
         "Error",
@@ -300,7 +297,6 @@ export default function CheckoutScreen() {
           });
           await fetchSavedAddresses(); // Refresh saved addresses
         } catch (err) {
-          console.log("Save address error:", err);
           // Continue with order even if address save fails
         }
       }
@@ -326,7 +322,6 @@ export default function CheckoutScreen() {
       // Navigate to orders page to see the placed order
       router.replace("/orders");
     } catch (err: any) {
-      console.log("Place order error:", err);
       const data = err?.response?.data;
       let msg = data?.message ?? err?.message ?? "Failed to place order. Please try again.";
       if (data?.detail?.errors) {
@@ -362,9 +357,11 @@ export default function CheckoutScreen() {
   return (
     <>
       <Stack.Screen
-        options={{
+        options={coerceNavBooleanOptions({
           headerShown: false,
-        }}
+          animationMatchesGesture: false,
+          freezeOnBlur: false,
+        })}
       />
       <View style={styles.container}>
         <StatusBar

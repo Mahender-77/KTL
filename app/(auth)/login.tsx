@@ -4,7 +4,6 @@ import { useAuth } from "@/context/AuthContext";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import axiosInstance from "@/constants/api/axiosInstance";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -38,17 +37,15 @@ export default function Login() {
     }
     try {
       setLoading(true);
-      await login(email.trim(), password);
-      
-      // Check user role and route accordingly
-      // Admin and user are treated the same - both go to tabs
-      const userRes = await axiosInstance.get("/api/auth/me");
-      const role = userRes.data.role || "user";
-      
+      const profile = await login(email.trim(), password);
+      if (!profile) {
+        alert("Could not load your profile. Try again.");
+        return;
+      }
+      const role = profile.role ?? "user";
       if (role === "delivery") {
         router.replace("/(delivery)/dashboard");
       } else {
-        // Both "user" and "admin" go to tabs
         router.replace("/(tabs)");
       }
     } catch (error) {
