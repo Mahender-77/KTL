@@ -13,6 +13,7 @@ import {
 import { useState } from "react";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
+import { useFeedback } from "@/context/FeedbackContext";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "@/constants/colors";
 import axios from "axios";
@@ -58,6 +59,7 @@ function formatRegisterError(error: unknown): string {
 
 export default function Register() {
   const { register, logout } = useAuth();
+  const { showToast } = useFeedback();
   const router = useRouter();
 
   const [name, setName] = useState("");
@@ -74,15 +76,27 @@ export default function Register() {
 
   const handleRegister = async () => {
     if (!name || !email || !password || !confirmPassword) {
-      alert("All fields are required");
+      showToast({
+        variant: "warning",
+        title: "Missing fields",
+        message: "All fields are required.",
+      });
       return;
     }
     if (password.length < 6) {
-      alert("Password must be at least 6 characters");
+      showToast({
+        variant: "warning",
+        title: "Password too short",
+        message: "Password must be at least 6 characters.",
+      });
       return;
     }
     if (password !== confirmPassword) {
-      alert("Passwords do not match");
+      showToast({
+        variant: "warning",
+        title: "Passwords do not match",
+        message: "Check that both password fields match.",
+      });
       return;
     }
     try {
@@ -92,7 +106,11 @@ export default function Register() {
       await logout();
       router.replace("/(auth)/login");
     } catch (error: unknown) {
-      alert(formatRegisterError(error));
+      showToast({
+        variant: "error",
+        title: "Registration failed",
+        message: formatRegisterError(error),
+      });
     } finally {
       setLoading(false);
     }

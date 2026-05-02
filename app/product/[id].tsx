@@ -33,6 +33,19 @@ export default function ProductDetailRoute() {
       const fetched: Product = res.data;
       setProduct(fetched);
 
+      void axiosInstance
+        .post("/api/recommendations/events", {
+          eventType: "product_view",
+          productId: fetched?._id,
+          categoryId:
+            typeof fetched?.category === "object" && fetched?.category?._id
+              ? fetched.category._id
+              : fetched?.category,
+        })
+        .catch(() => {
+          // Recommendation tracking must never block product page render.
+        });
+
       try {
         const catId = typeof fetched.category === "object" && fetched.category?._id
           ? fetched.category._id

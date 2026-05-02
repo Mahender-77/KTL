@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from "react";
+import React, { createContext, useContext, useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import axiosInstance from "@/constants/api/axiosInstance";
 import {
@@ -15,6 +15,8 @@ import {
 import {
   requestPermission,
   getPushToken,
+  getPushTokens,
+  getPushSubscriptionDiagnostics,
   persistPushRegistrationToken,
   getPersistedPushRegistrationToken,
   clearPersistedPushRegistrationToken,
@@ -40,6 +42,7 @@ interface AuthContextType {
   register: (name: string, email: string, password: string) => Promise<AuthUser | null>;
   logout: () => Promise<void>;
   loading: boolean;
+  registerPushNotifications: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -50,6 +53,18 @@ function mapPushPlatform(): "ios" | "android" | "web" {
   return "web";
 }
 
+const ACCESS_TOKEN_WAIT_ATTEMPTS = 12;
+const ACCESS_TOKEN_WAIT_DELAY_MS = 750;
+
+async function waitForAccessToken(): Promise<string | null> {
+  for (let attempt = 0; attempt < ACCESS_TOKEN_WAIT_ATTEMPTS; attempt++) {
+    const t = await getAccessToken();
+    if (t) return t;
+    await new Promise((r) => setTimeout(r, ACCESS_TOKEN_WAIT_DELAY_MS));
+  }
+  return null;
+}
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -58,40 +73,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [productFields, setProductFields] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const pushTokenRef = useRef<string | null>(null);
-
-  const syncPushRegistration = async () => {
-    if (Platform.OS === "web") return;
-    const perm = await requestPermission();
-    if (perm !== "granted") return;
-    const expoToken = await getPushToken();
-    if (!expoToken) return;
-    if (__DEV__) {
-      console.info("[push] Expo push token:", expoToken);
-    }
-    try {
-      await axiosInstance.post("/api/push/token", {
-        token: expoToken,
-        platform: mapPushPlatform(),
-      });
-      pushTokenRef.current = expoToken;
-      await persistPushRegistrationToken(expoToken);
-    } catch {
-      /* registration is best-effort */
-    }
-  };
-
-  const unregisterPushOnServer = async () => {
-    if (Platform.OS === "web") return;
-    const tok = pushTokenRef.current ?? (await getPersistedPushRegistrationToken());
-    if (!tok) return;
-    try {
-      await axiosInstance.delete("/api/push/token", { data: { token: tok } });
-    } catch {
-      /* best-effort */
-    }
-    pushTokenRef.current = null;
-    await clearPersistedPushRegistrationToken();
-  };
 
   const refreshTokens = async (): Promise<string | null> => {
     const refreshToken = await getRefreshToken();
@@ -116,6 +97,115 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setProductFields({});
       return null;
     }
+  };
+
+  const syncPushRegistration = async (prefetchedAccessToken?: string | null) => {
+    if (Platform.OS === "web") return;
+
+    let accessToken =
+      prefetchedAccessToken && prefetchedAccessToken.length > 0 ? prefetchedAccessToken : await getAccessToken();
+    if (!accessToken) {
+      accessToken = await waitForAccessToken();
+    }
+    if (!accessToken) {
+      console.error(
+        "[push] registration failed: no access token after storage wait — user may not receive push notifications"
+      );
+      return;
+    }
+
+    const perm = await requestPermission();
+    if (perm !== "granted") {
+      console.error("[push] registration failed: notification permission not granted");
+      return;
+    }
+
+    const pushTokens = await getPushTokens();
+    const fallbackToken = await getPushToken();
+    const candidateTokens =
+      pushTokens.length > 0
+        ? pushTokens
+        : fallbackToken?.token
+          ? [fallbackToken]
+          : [];
+    if (candidateTokens.length === 0) {
+      const diagnostics = await getPushSubscriptionDiagnostics();
+      console.error("[push] registration failed: no push token available", diagnostics);
+      return;
+    }
+    console.log(
+      "Push tokens:",
+      candidateTokens.map((p) => ({ provider: p.provider, suffix: p.token.slice(-8) }))
+    );
+    console.log("Access token:", accessToken);
+
+    const postRegister = async (
+      authToken: string,
+      payload: { token: string; provider: "expo" | "fcm" }
+    ) => {
+      await axiosInstance.post(
+        "/api/push/token",
+        {
+          token: payload.token,
+          platform: mapPushPlatform(),
+          provider: payload.provider,
+        },
+        { headers: { Authorization: `Bearer ${authToken}` } }
+      );
+    };
+
+    try {
+      for (const tokenPayload of candidateTokens) {
+        await postRegister(accessToken, tokenPayload);
+      }
+      pushTokenRef.current = candidateTokens[0]?.token ?? null;
+      if (pushTokenRef.current) {
+        await persistPushRegistrationToken(pushTokenRef.current);
+      }
+      if (__DEV__) console.info("[push] token registered successfully");
+    } catch (e: unknown) {
+      const status = (e as { response?: { status?: number } })?.response?.status;
+      if (status === 401) {
+        const newAccess = await refreshTokens();
+        if (!newAccess) {
+          console.error("[push] registration failed after 401: token refresh failed");
+          return;
+        }
+        console.log("Access token:", newAccess);
+        try {
+          for (const tokenPayload of candidateTokens) {
+            await postRegister(newAccess, tokenPayload);
+          }
+          pushTokenRef.current = candidateTokens[0]?.token ?? null;
+          if (pushTokenRef.current) {
+            await persistPushRegistrationToken(pushTokenRef.current);
+          }
+          if (__DEV__) console.info("[push] token registered successfully after refresh");
+        } catch (retryErr) {
+          console.error("[push] registration failed after refresh:", retryErr);
+        }
+      } else {
+        console.error("[push] registration failed:", e);
+      }
+    }
+  };
+
+  const unregisterPushOnServer = async () => {
+    if (Platform.OS === "web") return;
+    const accessToken = await getAccessToken();
+    if (!accessToken) return;
+    const tok = pushTokenRef.current ?? (await getPersistedPushRegistrationToken());
+    if (!tok) return;
+    try {
+      await axiosInstance.delete("/api/push/token", {
+        data: { token: tok },
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+    } catch {
+      /* best-effort */
+    }
+    pushTokenRef.current = null;
+    await clearPersistedPushRegistrationToken();
   };
 
   const fetchUserInfo = async (): Promise<AuthUser | null> => {
@@ -145,25 +235,32 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const checkToken = async () => {
-      await migrateLegacyTokensOnce();
+      try {
+        await migrateLegacyTokensOnce();
 
-      const token = await getAccessToken();
-      const refreshTok = await getRefreshToken();
+        const token = await getAccessToken();
+        const refreshTok = await getRefreshToken();
 
-      if (token) {
-        axiosInstance.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-        setIsAuthenticated(true);
-        await fetchUserInfo();
-        await syncPushRegistration();
-      } else if (refreshTok) {
-        const newAccess = await refreshTokens();
-        if (newAccess) {
+        if (token) {
+          axiosInstance.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+          setIsAuthenticated(true);
           await fetchUserInfo();
-          await syncPushRegistration();
+        } else if (refreshTok) {
+          const newAccess = await refreshTokens();
+          if (newAccess) {
+            await fetchUserInfo();
+          }
         }
+      } catch (err) {
+        console.error("[auth] bootstrap failed", err);
+        setIsAuthenticated(false);
+        setUser(null);
+        setModules([]);
+        setPermissions([]);
+        setProductFields({});
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     };
 
     checkToken();
@@ -217,7 +314,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     axiosInstance.defaults.headers.common["Authorization"] = `Bearer ${token}`;
     setIsAuthenticated(true);
     const u = await fetchUserInfo();
-    await syncPushRegistration();
+    console.log("Calling push registration after login");
+    await syncPushRegistration(token);
     return u;
   };
 
@@ -237,7 +335,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     axiosInstance.defaults.headers.common["Authorization"] = `Bearer ${token}`;
     setIsAuthenticated(true);
     const u = await fetchUserInfo();
-    await syncPushRegistration();
+    console.log("Calling push registration after login");
+    await syncPushRegistration(token);
     return u;
   };
 
@@ -278,6 +377,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         register,
         logout,
         loading,
+        registerPushNotifications: syncPushRegistration,
       }}
     >
       {children}

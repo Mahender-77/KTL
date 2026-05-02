@@ -1,23 +1,10 @@
 // components/home/CategoriesList.tsx
 import { ScrollView, StyleSheet, View, ActivityIndicator } from "react-native";
 import CategoryItem from "./CategoryItem";
-import { Ionicons } from "@expo/vector-icons";
 import { SCREEN_PADDING } from "@/constants/layout";
 import type { DisplayCategory } from "@/constants/catalog/categoriesCatalog";
 import { colors } from "@/constants/colors";
-
-const categoryIconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
-  garlic: "leaf-outline",
-  ginger: "nutrition-outline",
-  vegetables: "leaf-outline",
-  fruits: "nutrition-outline",
-  "fresh-fruits": "basket-outline",
-  juices: "wine-outline",
-  dairy: "cafe-outline",
-  spices: "flame-outline",
-  grains: "cube-outline",
-  meat: "restaurant-outline",
-};
+import { resolveCategoryImage } from "@/assets/category-images/categoryImageMap";
 
 type Props = {
   categories: DisplayCategory[];
@@ -26,42 +13,48 @@ type Props = {
 };
 
 export default function CategoriesList({ categories, onSelectCategory, loading }: Props) {
+  if (loading && categories.length === 0) {
+    return (
+      <View style={s.loadingRow}>
+        <ActivityIndicator size="small" color={colors.primary} />
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.wrapper}>
-      {loading && categories.length === 0 ? (
-        <View style={styles.loadingRow}>
-          <ActivityIndicator size="small" color={colors.primary} />
-        </View>
-      ) : (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: SCREEN_PADDING }}
-        >
-          {categories.map((item) => (
+    <View style={s.wrapper}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={s.list}
+      >
+        {categories.map((item) => {
+          return (
             <CategoryItem
               key={item.slug || item._id}
               title={item.name}
-              icon={
-                categoryIconMap[(item.slug || "").toLowerCase()] || "grid-outline"
-              }
+              image={resolveCategoryImage(item.slug, item.name)}
               onPress={() => onSelectCategory(item)}
             />
-          ))}
-        </ScrollView>
-      )}
+          );
+        })}
+      </ScrollView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   wrapper: {
-    marginTop: 10,
-    marginBottom: 20,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  list: {
+    paddingHorizontal: SCREEN_PADDING,
+    gap: 10,
   },
   loadingRow: {
     paddingHorizontal: SCREEN_PADDING,
-    paddingVertical: 16,
+    paddingVertical: 20,
     alignItems: "center",
   },
 });

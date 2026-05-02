@@ -1,5 +1,12 @@
 // app/(tabs)/products.tsx
-import { View, Text, StyleSheet, ScrollView, StatusBar, RefreshControl } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  StatusBar,
+  RefreshControl,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCallback, useEffect, useState } from "react";
 import axiosInstance from "@/constants/api/axiosInstance";
@@ -9,6 +16,7 @@ import ProductGrid from "@/components/product/ProductGrid";
 import { colors } from "@/constants/colors";
 import { SCREEN_PADDING } from "@/constants/layout";
 import Loader from "@/components/common/Loader";
+import { Ionicons } from "@expo/vector-icons";
 
 export default function ProductsScreen() {
   const insets = useSafeAreaInsets();
@@ -38,69 +46,128 @@ export default function ProductsScreen() {
   }, [load]);
 
   return (
-    <>
-      <View style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} translucent={false} />
+    <View style={s.root}>
+      <StatusBar barStyle="light-content" backgroundColor="#0F1923" translucent={false} />
 
-        <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
-          <View style={styles.headerBlob} />
-          <Text style={styles.headerTitle}>All Products</Text>
-          <Text style={styles.headerSubtitle}>Browse the full catalog</Text>
+      {/* ── Header ── */}
+      <View style={[s.header, { paddingTop: insets.top + 12 }]}>
+        <View style={s.headerTop}>
+          <Text style={s.headerTitle}>All Products</Text>
+          {!loading && products.length > 0 && (
+            <View style={s.headerBadge}>
+              <Text style={s.headerBadgeText}>{products.length}</Text>
+            </View>
+          )}
         </View>
-
-        {loading ? (
-          <Loader variant="fullscreen" message="Loading products..." />
-        ) : (
-          <ScrollView
-            style={styles.scroll}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-            }
-          >
-            <ProductGrid products={products} responsive />
-          </ScrollView>
-        )}
+        <Text style={s.headerSub}>Browse the full catalogue</Text>
       </View>
-    </>
+
+      {loading ? (
+        <Loader variant="fullscreen" message="Loading products..." />
+      ) : (
+        <ScrollView
+          style={s.scroll}
+          contentContainerStyle={s.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+        >
+          {/* Info strip */}
+          {products.length > 0 && (
+            <View style={s.infoStrip}>
+              <Ionicons name="grid-outline" size={13} color={colors.primary} />
+              <Text style={s.infoStripText}>
+                {products.length} product{products.length !== 1 ? "s" : ""} · prices, offers & availability
+              </Text>
+            </View>
+          )}
+
+          <ProductGrid products={products} responsive />
+        </ScrollView>
+      )}
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  header: {
-    backgroundColor: colors.primaryDark,
-    paddingHorizontal: SCREEN_PADDING,
-    paddingBottom: 24,
-    overflow: "hidden",
-    position: "relative",
+const s = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: "#F4F6F9",
   },
-  headerBlob: {
-    position: "absolute",
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: colors.primary,
-    opacity: 0.3,
-    top: -50,
-    right: -40,
+
+  // Header
+  header: {
+    backgroundColor: "#0F1923",
+    paddingHorizontal: SCREEN_PADDING,
+    paddingBottom: 14,
+  },
+  headerTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 2,
   },
   headerTitle: {
-    fontSize: 26,
+    fontSize: 18,
     fontWeight: "800",
     color: "#fff",
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
   },
-  headerSubtitle: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.65)",
-    marginTop: 6,
+  headerBadge: {
+    backgroundColor: colors.primary,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 5,
+  },
+  headerBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#fff",
+  },
+  headerSub: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.45)",
     fontWeight: "500",
   },
+
+  // Scroll
   scroll: { flex: 1 },
   scrollContent: {
-    paddingTop: 16,
+    paddingTop: 12,
     paddingBottom: 32,
+  },
+
+  // Info strip
+  infoStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginHorizontal: 12,
+    marginBottom: 10,
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "#EAEDF2",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  infoStripText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: "500",
   },
 });

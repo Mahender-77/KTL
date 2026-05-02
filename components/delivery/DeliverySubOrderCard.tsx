@@ -10,6 +10,18 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import { colors } from "@/constants/colors";
 import type { DeliverySubOrder } from "@/types/delivery";
+import { parseImageUri } from "@/utils/imageUri";
+
+function OrderLineThumb({ imageUrl }: { imageUrl?: string }) {
+  const u = parseImageUri(imageUrl);
+  return u ? (
+    <Image source={{ uri: u }} style={styles.itemImage} />
+  ) : (
+    <View style={[styles.itemImage, styles.itemImagePlaceholder]}>
+      <Ionicons name="image-outline" size={20} color={colors.textMuted} />
+    </View>
+  );
+}
 
 function getStatusColor(status: string) {
   switch (status) {
@@ -208,7 +220,7 @@ export function DeliverySubOrderCard({
         {variant === "active"
           ? (subOrder.items ?? []).map((item, idx) => (
               <View key={idx} style={styles.itemRow}>
-                <Image source={{ uri: item.product?.images?.[0] ?? "" }} style={styles.itemImage} />
+                <OrderLineThumb imageUrl={item.product?.images?.[0]} />
                 <View style={styles.itemDetails}>
                   <Text style={styles.itemName} numberOfLines={1}>
                     {item.product?.name}
@@ -220,7 +232,7 @@ export function DeliverySubOrderCard({
             ))
           : (subOrder.items ?? []).slice(0, 2).map((item, idx) => (
               <View key={idx} style={styles.itemRow}>
-                <Image source={{ uri: item.product?.images?.[0] ?? "" }} style={styles.itemImage} />
+                <OrderLineThumb imageUrl={item.product?.images?.[0]} />
                 <View style={styles.itemDetails}>
                   <Text style={styles.itemName} numberOfLines={1}>
                     {item.product?.name}
@@ -528,6 +540,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: colors.border,
     marginRight: 10,
+  },
+  itemImagePlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
   },
   itemDetails: {
     flex: 1,

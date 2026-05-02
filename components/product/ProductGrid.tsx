@@ -21,12 +21,11 @@ function categoryLabelFor(
 
 type Props = {
   products?: Product[];
-  /** When products only have category ids, pass the loaded category list to show names on cards */
   categories?: { _id: string; name: string }[];
   onRemove?: (productId: string) => void;
   showRemoveButton?: boolean;
-  /** When true, card size adapts to current screen width (use on main product grids) */
   responsive?: boolean;
+  onProductPress?: (productId: string) => void;
 };
 
 export default function ProductGrid({
@@ -35,16 +34,20 @@ export default function ProductGrid({
   onRemove,
   showRemoveButton = false,
   responsive = false,
+  onProductPress,
 }: Props) {
   const layout = useLayout();
-  const cardWidth = responsive ? layout.cardWidth : undefined;
+  const cardWidth  = responsive ? layout.cardWidth  : undefined;
   const cardHeight = responsive ? layout.cardHeight : undefined;
 
   if (!products.length) {
     return (
-      <View style={styles.emptyContainer}>
-        <Ionicons name="basket-outline" size={40} color={colors.disabled} style={{ marginBottom: 8 }} />
-        <Text style={styles.emptyText}>No products available</Text>
+      <View style={s.emptyWrap}>
+        <View style={s.emptyIconWrap}>
+          <Ionicons name="basket-outline" size={36} color={colors.primary} />
+        </View>
+        <Text style={s.emptyTitle}>No products available</Text>
+        <Text style={s.emptySub}>Check back later for new items</Text>
       </View>
     );
   }
@@ -52,52 +55,55 @@ export default function ProductGrid({
   return (
     <FlatList
       data={products}
-      keyExtractor={(item, index) => item._id ?? (item as any).id ?? `product-${index}`}
+      keyExtractor={(item, index) =>
+        item._id ?? (item as any).id ?? `product-${index}`
+      }
       numColumns={2}
       scrollEnabled={false}
-      contentContainerStyle={styles.container}
-      columnWrapperStyle={styles.row}
+      contentContainerStyle={s.container}
+      columnWrapperStyle={s.row}
       renderItem={({ item, index }) => {
         const categoryLabel = categoryLabelFor(item, categories);
         return (
-        <View style={showRemoveButton ? styles.cardWrapper : undefined}>
-          <ProductCard
-            id={item._id ?? (item as any).id ?? `product-${index}`}
-            name={item.name}
-            images={item.images ?? []}
-            pricingMode={item.pricingMode ?? "unit"}
-            baseUnit={item.baseUnit ?? "pcs"}
-            pricePerUnit={item.pricePerUnit ?? 0}
-            availableQuantity={item.availableQuantity ?? 0}
-            hasExpiry={item.hasExpiry ?? false}
-            nearestExpiry={item.nearestExpiry}
-            variants={item.variants ?? []}
-            description={item.description}
-            categoryLabel={categoryLabel}
-            tags={item.tags}
-            taxRate={item.taxRate}
-            minOrderQty={item.minOrderQty}
-            maxOrderQty={item.maxOrderQty}
-            cardWidth={cardWidth}
-            cardHeight={cardHeight}
-          />
-          {showRemoveButton && onRemove && (
-            <TouchableOpacity
-              style={styles.removeButton}
-              onPress={() => onRemove(item._id)}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="trash" size={18} color={colors.card} />
-            </TouchableOpacity>
-          )}
-        </View>
+          <View style={showRemoveButton ? s.cardWrapper : undefined}>
+            <ProductCard
+              id={item._id ?? (item as any).id ?? `product-${index}`}
+              name={item.name}
+              images={item.images ?? []}
+              pricingMode={item.pricingMode ?? "unit"}
+              baseUnit={item.baseUnit ?? "pcs"}
+              pricePerUnit={item.pricePerUnit ?? 0}
+              availableQuantity={item.availableQuantity ?? 0}
+              hasExpiry={item.hasExpiry ?? false}
+              nearestExpiry={item.nearestExpiry}
+              variants={item.variants ?? []}
+              description={item.description}
+              categoryLabel={categoryLabel}
+              tags={item.tags}
+              taxRate={item.taxRate}
+              minOrderQty={item.minOrderQty}
+              maxOrderQty={item.maxOrderQty}
+              cardWidth={cardWidth}
+              cardHeight={cardHeight}
+              onProductPress={onProductPress}
+            />
+            {showRemoveButton && onRemove && (
+              <TouchableOpacity
+                style={s.removeBtn}
+                onPress={() => onRemove(item._id)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="close" size={14} color="#fff" />
+              </TouchableOpacity>
+            )}
+          </View>
         );
       }}
     />
   );
 }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   container: {
     paddingHorizontal: SCREEN_PADDING,
     paddingBottom: 10,
@@ -107,25 +113,56 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: CARD_GAP,
   },
+
+  // Card wrapper (wishlist remove overlay)
   cardWrapper: {
     position: "relative",
   },
-  removeButton: {
+  removeBtn: {
     position: "absolute",
-    bottom: 8, right: 8,
-    width: 36, height: 36, borderRadius: 18,
+    top: 8,
+    right: 8,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: colors.error,
-    alignItems: "center", justifyContent: "center",
+    alignItems: "center",
+    justifyContent: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25, shadowRadius: 4,
-    elevation: 5, zIndex: 10,
-    borderWidth: 2, borderColor: colors.card,
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    zIndex: 10,
+    borderWidth: 1.5,
+    borderColor: "#fff",
   },
-  emptyContainer: {
+
+  // Empty state
+  emptyWrap: {
     paddingHorizontal: SCREEN_PADDING,
-    paddingVertical: 40,
+    paddingVertical: 48,
     alignItems: "center",
+    gap: 10,
   },
-  emptyText: { color: colors.textMuted, fontSize: 14 },
+  emptyIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "#EEF2FF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: colors.textPrimary,
+  },
+  emptySub: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: "500",
+    textAlign: "center",
+  },
 });

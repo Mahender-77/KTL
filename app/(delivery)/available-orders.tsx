@@ -1,161 +1,233 @@
-import { useCallback, useEffect, useState } from "react";
-import { Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import * as Location from "expo-location";
-import axiosInstance from "@/constants/api/axiosInstance";
+import { memo, useCallback, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  RefreshControl,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { colors } from "@/constants/colors";
-import { SCREEN_PADDING } from "@/constants/layout";
 import { getApiErrorMessage } from "@/utils/apiError";
 
-type AvailableOrder = {
+export type AvailableOrder = {
   _id: string;
   itemsCount: number;
   totalAmount: number;
-  deliveryAddress: string;
   deliveryFee: number;
-  distanceKm: number;
+  deliveryAddress: string;
+  distanceKm: number | null;
+  store?: { _id: string; name: string; city?: string; address?: string } | null;
 };
 
-export default function AvailableOrdersScreen() {
-  const [orders, setOrders] = useState<AvailableOrder[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
+type Props = {
+  orders: AvailableOrder[];
+  loading: boolean;
+  refreshing: boolean;
+  onManualRefresh: () => void;
+  /** Parent handles optimistic cache update + API + rollback */
+  onAcceptOrder: (order: AvailableOrder) => void | Promise<void>;
+};
 
-  const loadOrders = useCallback(async (mode: "initial" | "refresh" | "silent") => {
-    try {
-      if (mode === "initial") setLoading(true);
-      if (mode === "refresh") setRefreshing(true);
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        throw new Error("Location permission is required to view nearby orders.");
+function AvailableOrdersScreen({
+  orders,
+  loading,
+  refreshing,
+  onManualRefresh,
+  onAcceptOrder,
+}: Props) {
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const isAcceptingAnyOrder = acceptingId != null;
+
+  const acceptOrder = useCallback(
+    async (order: AvailableOrder) => {
+      try {
+        setAcceptingId(order._id);
+        await onAcceptOrder(order);
+        Alert.alert("Order accepted", "This order is now assigned to you.");
+      } catch (error) {
+        Alert.alert("Error", getApiErrorMessage(error, "Could not accept this order."));
+      } finally {
+        setAcceptingId(null);
       }
-      const current = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      const res = await axiosInstance.get("/api/orders/available", {
-        params: {
-          lat: current.coords.latitude,
-          lng: current.coords.longitude,
-        },
-      });
-      const list = Array.isArray(res.data?.data) ? res.data.data : [];
-      setOrders(list);
-    } catch (error) {
-      if (mode !== "silent") {
-        Alert.alert("Error", getApiErrorMessage(error, "Could not load available orders."));
-      }
-    } finally {
-      if (mode === "initial") setLoading(false);
-      if (mode === "refresh") setRefreshing(false);
-    }
-  }, []);
+    },
+    [onAcceptOrder]
+  );
 
-  useEffect(() => {
-    loadOrders("initial");
-  }, [loadOrders]);
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      loadOrders("silent");
-    }, 30000);
-    return () => clearInterval(id);
-  }, [loadOrders]);
-
-  const acceptOrder = useCallback(async (orderId: string) => {
-    try {
-      setUpdatingId(orderId);
-      await axiosInstance.post(`/api/orders/${orderId}/accept`);
-      await loadOrders("silent");
-      Alert.alert("Success", "Order accepted.");
-    } catch (error) {
-      Alert.alert("Order unavailable", getApiErrorMessage(error, "Sorry, this order was already accepted."));
-      await loadOrders("silent");
-    } finally {
-      setUpdatingId(null);
-    }
-  }, [loadOrders]);
-
-  const rejectOrder = useCallback(async (orderId: string) => {
-    try {
-      setUpdatingId(orderId);
-      await axiosInstance.post(`/api/orders/${orderId}/reject`);
-      setOrders((prev) => prev.filter((o) => o._id !== orderId));
-    } catch (error) {
-      Alert.alert("Error", getApiErrorMessage(error, "Could not reject order."));
-    } finally {
-      setUpdatingId(null);
-    }
-  }, []);
-
-  if (loading) {
+  if (loading && orders.length === 0 && !isAcceptingAnyOrder) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.emptyText}>Loading available orders...</Text>
+      <View style={s.centerState}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={s.stateText}>Loading available orders...</Text>
+      </View>
+    );
+  }
+
+  if (orders.length === 0) {
+    return (
+      <View style={s.centerState}>
+        <View style={s.emptyIconWrap}>
+          <Ionicons name="list-outline" size={40} color={colors.primary} />
+        </View>
+        <Text style={s.emptyTitle}>No available orders</Text>
+        <Text style={s.emptySubtitle}>Pull to refresh or check again shortly.</Text>
+        <TouchableOpacity style={s.refreshBtn} onPress={onManualRefresh} activeOpacity={0.85}>
+          <Ionicons name="refresh" size={15} color="#fff" />
+          <Text style={s.refreshBtnText}>Refresh</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
   return (
     <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
+      style={{ flex: 1 }}
+      contentContainerStyle={s.listWrap}
+      showsVerticalScrollIndicator={false}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={() => loadOrders("refresh")} tintColor={colors.primary} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onManualRefresh}
+          tintColor={colors.primary}
+        />
       }
     >
-      {orders.length === 0 ? (
-        <View style={styles.center}>
-          <Text style={styles.emptyText}>No orders available nearby</Text>
-        </View>
-      ) : (
-        orders.map((order) => (
-          <View key={order._id} style={styles.card}>
-            <View style={styles.rowBetween}>
-              <Text style={styles.title}>Order #{order._id.slice(-6)}</Text>
-              <Text style={styles.distance}>
-                {order.distanceKm >= 9999 ? "Distance unknown" : `${order.distanceKm.toFixed(1)} km away`}
-              </Text>
+      {orders.map((order) => {
+        const isAccepting = acceptingId === order._id;
+        return (
+          <View key={order._id} style={s.card}>
+            <View style={s.cardTop}>
+              <Text style={s.poolLabel}>Available to accept</Text>
+              <View style={s.distanceBadge}>
+                <Ionicons name="navigate-outline" size={12} color={colors.primary} />
+                <Text style={s.distanceText}>
+                  {typeof order.distanceKm === "number" && Number.isFinite(order.distanceKm)
+                    ? `${order.distanceKm.toFixed(1)} km`
+                    : "N/A"}
+                </Text>
+              </View>
             </View>
-            <Text style={styles.meta}>{order.itemsCount} items • ₹{order.totalAmount}</Text>
-            <Text style={styles.meta}>Deliver to: {order.deliveryAddress || "Address unavailable"}</Text>
-            <Text style={styles.meta}>Delivery fee: ₹{order.deliveryFee}</Text>
-            <View style={styles.actions}>
-              <TouchableOpacity
-                style={[styles.btn, styles.rejectBtn]}
-                disabled={updatingId === order._id}
-                onPress={() => rejectOrder(order._id)}
-              >
-                <Text style={styles.rejectText}>Reject</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.acceptBtn]}
-                disabled={updatingId === order._id}
-                onPress={() => acceptOrder(order._id)}
-              >
-                <Text style={styles.acceptText}>Accept Order</Text>
-              </TouchableOpacity>
+
+            <Text style={s.storeName}>{order.store?.name || "Store"}</Text>
+            <Text style={s.storeMeta}>{order.store?.city || "City unknown"}</Text>
+
+            <View style={s.infoRow}>
+              <Text style={s.infoLabel}>Items</Text>
+              <Text style={s.infoValue}>{order.itemsCount}</Text>
             </View>
+            <View style={s.infoRow}>
+              <Text style={s.infoLabel}>Order total</Text>
+              <Text style={s.infoValue}>₹{Number(order.totalAmount || 0).toLocaleString("en-IN")}</Text>
+            </View>
+            <View style={s.infoRow}>
+              <Text style={s.infoLabel}>Delivery fee</Text>
+              <Text style={s.infoValue}>₹{Number(order.deliveryFee || 0).toLocaleString("en-IN")}</Text>
+            </View>
+            <Text style={s.addressText}>{order.deliveryAddress || "Address unavailable"}</Text>
+
+            <TouchableOpacity
+              style={[s.acceptBtn, isAccepting && { opacity: 0.7 }]}
+              onPress={() => void acceptOrder(order)}
+              disabled={isAccepting}
+              activeOpacity={0.85}
+            >
+              {isAccepting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle-outline" size={16} color="#fff" />
+                  <Text style={s.acceptBtnText}>Accept Order</Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
-        ))
-      )}
+        );
+      })}
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: SCREEN_PADDING, paddingBottom: 30, gap: 12 },
-  center: { flex: 1, minHeight: 260, alignItems: "center", justifyContent: "center" },
-  emptyText: { color: colors.textMuted, fontSize: 15, fontWeight: "600" },
-  card: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 14, gap: 8 },
-  rowBetween: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  title: { fontSize: 16, fontWeight: "800", color: colors.textPrimary },
-  distance: { fontSize: 13, color: colors.primary, fontWeight: "700" },
-  meta: { fontSize: 13, color: colors.textSecondary },
-  actions: { marginTop: 8, flexDirection: "row", justifyContent: "space-between", gap: 10 },
-  btn: { flex: 1, borderRadius: 10, paddingVertical: 10, alignItems: "center" },
-  rejectBtn: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  acceptBtn: { backgroundColor: colors.primary },
-  rejectText: { color: colors.textPrimary, fontWeight: "700" },
-  acceptText: { color: "#fff", fontWeight: "700" },
+export default memo(AvailableOrdersScreen);
+
+const s = StyleSheet.create({
+  listWrap: { padding: 12, gap: 10 },
+  centerState: {
+    flex: 1,
+    minHeight: 280,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  stateText: { fontSize: 13, color: colors.textMuted, fontWeight: "600" },
+  emptyIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#EEF2FF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  emptyTitle: { fontSize: 16, fontWeight: "800", color: colors.textPrimary },
+  emptySubtitle: { fontSize: 12, color: colors.textMuted, fontWeight: "500" },
+  refreshBtn: {
+    marginTop: 8,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  refreshBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#EAEDF2",
+    padding: 12,
+    gap: 8,
+  },
+  cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  poolLabel: { fontSize: 12, fontWeight: "800", color: colors.textPrimary },
+  distanceBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#EEF2FF",
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  distanceText: { fontSize: 11, fontWeight: "700", color: colors.primary },
+  storeName: { fontSize: 14, fontWeight: "800", color: colors.textPrimary },
+  storeMeta: { fontSize: 12, fontWeight: "600", color: colors.textMuted },
+  infoRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  infoLabel: { fontSize: 12, color: colors.textMuted, fontWeight: "600" },
+  infoValue: { fontSize: 12, color: colors.textPrimary, fontWeight: "700" },
+  addressText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    lineHeight: 18,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 8,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: "#EDF1F5",
+  },
+  acceptBtn: {
+    marginTop: 4,
+    backgroundColor: colors.success,
+    borderRadius: 10,
+    paddingVertical: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  acceptBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
 });

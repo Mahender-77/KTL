@@ -16,6 +16,7 @@ import axiosInstance from "@/constants/api/axiosInstance";
 import { Product } from "@/assets/types/product";
 import { SCREEN_PADDING } from "@/constants/layout";
 import { colors } from "@/constants/colors";
+import { parseImageUri } from "@/utils/imageUri";
 
 type DealProduct = Product & { dealDiscountPercent?: number };
 
@@ -36,6 +37,7 @@ function DealCard({ item, cardWidth }: { item: DealProduct; cardWidth: number })
   const discountPercent = item.dealDiscountPercent ?? 5;
   const displayPrice = withTax(basePrice * (1 - discountPercent / 100), item.taxRate);
   const origPrice = withTax(basePrice, item.taxRate);
+  const dealImgUri = parseImageUri(item.images?.[0]);
 
   return (
     <TouchableOpacity
@@ -44,8 +46,8 @@ function DealCard({ item, cardWidth }: { item: DealProduct; cardWidth: number })
       onPress={() => router.push({ pathname: "/product/[id]", params: { id: item._id } })}
     >
       <View style={s.imgBox}>
-        {item.images?.[0] ? (
-          <Image source={{ uri: item.images[0] }} style={s.img} resizeMode="cover" />
+        {dealImgUri ? (
+          <Image source={{ uri: dealImgUri }} style={s.img} resizeMode="cover" />
         ) : (
           <View style={[s.img, s.imgPlaceholder]}>
             <Ionicons name="image-outline" size={32} color={colors.textMuted} />

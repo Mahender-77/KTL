@@ -13,6 +13,16 @@
       "env": {
         "EAS_SKIP_AUTO_FINGERPRINT": "1"
       }
-    }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production": {}
+  },
+  "submit": {
+    "production": {}
   }
 }

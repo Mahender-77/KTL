@@ -7,6 +7,7 @@ const DELIVERY_MESSAGES: Record<string, string> = {
   SUBORDER_ACCESS_DENIED: "You do not have access to this delivery.",
   LOCATION_REQUIRED: "Location is required. Enable location services and try again.",
   MODULE_DISABLED: "Delivery is not enabled for this organization.",
+  CUSTOMER_PUSH_TOKEN_MISSING: "Customer has not enabled app notifications yet. Ask customer to login and enable notifications.",
   ORG_REQUIRED: "Organization context is missing. Sign in again.",
   ORG_MISMATCH: "Organization mismatch. Sign in again.",
   ORG_INACTIVE: "This organization is inactive.",

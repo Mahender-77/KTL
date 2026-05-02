@@ -14,74 +14,187 @@ import { colors } from "@/constants/colors";
 import { SCREEN_PADDING } from "@/constants/layout";
 import { useAuth } from "@/context/AuthContext";
 
-function Row({
+// ── Menu Row ──────────────────────────────────────────────────────────────────
+
+function MenuRow({
   icon,
   label,
+  sublabel,
   onPress,
+  danger,
 }: {
   icon: string;
   label: string;
+  sublabel?: string;
   onPress?: () => void;
+  danger?: boolean;
 }) {
   return (
     <TouchableOpacity
-      style={styles.row}
+      style={styles.menuRow}
       onPress={onPress}
       activeOpacity={onPress ? 0.7 : 1}
       disabled={!onPress}
     >
-      <View style={styles.rowIcon}>
-        <Ionicons name={icon as never} size={20} color={colors.primary} />
+      <View style={[styles.menuRowIcon, danger && styles.menuRowIconDanger]}>
+        <Ionicons
+          name={icon as never}
+          size={18}
+          color={danger ? colors.error : colors.primary}
+        />
       </View>
-      <Text style={styles.rowLabel}>{label}</Text>
-      {onPress ? (
-        <Ionicons name="chevron-forward" size={18} color={colors.disabled} />
+      <View style={styles.menuRowContent}>
+        <Text style={[styles.menuRowLabel, danger && styles.menuRowLabelDanger]}>
+          {label}
+        </Text>
+        {sublabel ? (
+          <Text style={styles.menuRowSub}>{sublabel}</Text>
+        ) : null}
+      </View>
+      {onPress && !danger ? (
+        <Ionicons name="chevron-forward" size={16} color="#C8CDD6" />
       ) : null}
     </TouchableOpacity>
   );
 }
 
+// ── Section wrapper ───────────────────────────────────────────────────────────
+
+function Section({ children }: { children: React.ReactNode }) {
+  return <View style={styles.section}>{children}</View>;
+}
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
 
+  const initials = user?.name
+    ? user.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)
+    : "?";
+
   return (
-    <>
-      <View style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} translucent={false} />
+    <View style={styles.root}>
+      <StatusBar barStyle="light-content" backgroundColor="#0F1923" translucent={false} />
 
-        <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
-          <View style={styles.headerBlob} />
+      {/* ── Header ── */}
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+        <Text style={styles.headerLabel}>Profile</Text>
+
+        {/* Avatar + name */}
+        <View style={styles.profileRow}>
           <View style={styles.avatar}>
-            <Ionicons name="person" size={36} color={colors.card} />
+            <Text style={styles.avatarText}>{initials}</Text>
           </View>
-          <Text style={styles.name}>{user?.name ?? "Guest"}</Text>
-          <Text style={styles.email}>{user?.email ?? "Not signed in"}</Text>
+          <View style={styles.profileInfo}>
+            <Text style={styles.profileName} numberOfLines={1}>
+              {user?.name ?? "Guest"}
+            </Text>
+            <Text style={styles.profileEmail} numberOfLines={1}>
+              {user?.email ?? "Not signed in"}
+            </Text>
+          </View>
+          <View style={styles.verifiedBadge}>
+            <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+            <Text style={styles.verifiedText}>Verified</Text>
+          </View>
         </View>
+      </View>
 
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <Row
-            icon="receipt-outline"
-            label="Orders"
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Quick stats ── */}
+        <View style={styles.statsRow}>
+          <TouchableOpacity
+            style={styles.statCard}
             onPress={() => router.push("/orders" as never)}
-          />
-          <Row
-            icon="heart-outline"
-            label="Wishlist"
-            onPress={() => router.push("/(tabs)/wishlist" as never)}
-          />
-          <Row
-            icon="grid-outline"
-            label="All products"
-            onPress={() => router.push("/(tabs)/products" as never)}
-          />
+            activeOpacity={0.8}
+          >
+            <View style={styles.statIconWrap}>
+              <Ionicons name="receipt" size={18} color={colors.primary} />
+            </View>
+            <Text style={styles.statLabel}>Orders</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.logoutBtn}
+            style={styles.statCard}
+            onPress={() => router.push("/(tabs)/wishlist" as never)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.statIconWrap}>
+              <Ionicons name="heart" size={18} color="#EF4444" />
+            </View>
+            <Text style={styles.statLabel}>Wishlist</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.statCard}
+            onPress={() => router.push("/(tabs)/cart" as never)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.statIconWrap}>
+              <Ionicons name="cart" size={18} color={colors.primary} />
+            </View>
+            <Text style={styles.statLabel}>Cart</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ── Shop ── */}
+        <Section>
+          <Text style={styles.sectionTitle}>Shop</Text>
+          <MenuRow
+            icon="receipt-outline"
+            label="My Orders"
+            sublabel="Track and view past orders"
+            onPress={() => router.push("/orders" as never)}
+          />
+          <MenuRow
+            icon="heart-outline"
+            label="Wishlist"
+            sublabel="Items you've saved"
+            onPress={() => router.push("/(tabs)/wishlist" as never)}
+          />
+          <MenuRow
+            icon="grid-outline"
+            label="All Products"
+            sublabel="Browse the full catalogue"
+            onPress={() => router.push("/(tabs)/products" as never)}
+          />
+        </Section>
+
+        {/* ── Account ── */}
+        <Section>
+          <Text style={styles.sectionTitle}>Account</Text>
+          <MenuRow
+            icon="person-outline"
+            label="Edit Profile"
+            sublabel="Update your name and details"
+            onPress={() => {}}
+          />
+          <MenuRow
+            icon="location-outline"
+            label="Saved Addresses"
+            sublabel="Manage delivery addresses"
+            onPress={() => {}}
+          />
+          <MenuRow
+            icon="notifications-outline"
+            label="Notifications"
+            sublabel="Manage your alerts"
+            onPress={() => {}}
+          />
+        </Section>
+
+        {/* ── Logout ── */}
+        <Section>
+          <MenuRow
+            icon="log-out-outline"
+            label="Logout"
+            danger
             onPress={async () => {
               try {
                 await logout();
@@ -90,111 +203,225 @@ export default function ProfileScreen() {
                 router.replace("/(auth)/login" as never);
               }
             }}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="log-out-outline" size={20} color={colors.error} />
-            <Text style={styles.logoutText}>Logout</Text>
-          </TouchableOpacity>
+          />
+        </Section>
 
-          <Text style={styles.footer}>KTL Fresh · v1.0.0</Text>
-        </ScrollView>
-      </View>
-    </>
+        {/* ── Footer ── */}
+        <View style={styles.footer}>
+          <View style={styles.footerBrand}>
+            <Ionicons name="leaf" size={13} color={colors.primary} />
+            <Text style={styles.footerBrandText}>KTL Fresh</Text>
+          </View>
+          <Text style={styles.footerVersion}>v1.0.0</Text>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  header: {
-    backgroundColor: colors.primaryDark,
-    paddingHorizontal: SCREEN_PADDING,
-    paddingBottom: 28,
-    alignItems: "center",
-    overflow: "hidden",
-    position: "relative",
+  root: {
+    flex: 1,
+    backgroundColor: "#F4F6F9",
   },
-  headerBlob: {
-    position: "absolute",
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: colors.primary,
-    opacity: 0.25,
-    top: -60,
-    right: -50,
+
+  // ── Header ──
+  header: {
+    backgroundColor: "#0F1923",
+    paddingHorizontal: SCREEN_PADDING,
+    paddingBottom: 20,
+  },
+  headerLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.45)",
+    letterSpacing: 0.5,
+    marginBottom: 14,
+    textTransform: "uppercase",
+  },
+  profileRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "rgba(255,255,255,0.15)",
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.3)",
-    marginBottom: 14,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  name: {
-    fontSize: 22,
+  avatarText: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#fff",
+    letterSpacing: -0.5,
+  },
+  profileInfo: {
+    flex: 1,
+  },
+  profileName: {
+    fontSize: 17,
     fontWeight: "800",
     color: "#fff",
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
+    marginBottom: 3,
   },
-  email: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.65)",
-    marginTop: 6,
+  profileEmail: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.5)",
     fontWeight: "500",
   },
+  verifiedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#F0FDF4",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  verifiedText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: colors.success,
+  },
+
+  // ── Scroll ──
   scroll: { flex: 1 },
   scrollContent: {
-    paddingHorizontal: SCREEN_PADDING,
-    paddingTop: 20,
+    paddingTop: 14,
+    paddingHorizontal: 12,
     paddingBottom: 40,
+    gap: 10,
   },
-  row: {
+
+  // ── Stats row ──
+  statsRow: {
     flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 14,
-    gap: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.divider,
+    gap: 8,
+    marginBottom: 2,
   },
-  rowIcon: {
-    width: 40,
-    height: 40,
+  statCard: {
+    flex: 1,
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#EAEDF2",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  statIconWrap: {
+    width: 36,
+    height: 36,
     borderRadius: 10,
-    backgroundColor: colors.surface,
+    backgroundColor: "#EEF2FF",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors.border,
   },
-  rowLabel: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: "600",
+  statLabel: {
+    fontSize: 11,
+    fontWeight: "700",
     color: colors.textPrimary,
   },
-  logoutBtn: {
+
+  // ── Section ──
+  section: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: "#EAEDF2",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
+    overflow: "hidden",
+  },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.textMuted,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    paddingTop: 14,
+    paddingBottom: 8,
+  },
+
+  // ── Menu row ──
+  menuRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
-    marginTop: 20,
-    paddingVertical: 14,
+    gap: 12,
+    paddingVertical: 13,
     borderTopWidth: 1,
-    borderTopColor: colors.divider,
+    borderTopColor: "#F4F6F9",
   },
-  logoutText: {
-    fontSize: 16,
-    fontWeight: "600",
+  menuRowIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "#EEF2FF",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  menuRowIconDanger: {
+    backgroundColor: "#FEF2F2",
+  },
+  menuRowContent: {
+    flex: 1,
+  },
+  menuRowLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.textPrimary,
+    marginBottom: 1,
+  },
+  menuRowLabelDanger: {
     color: colors.error,
   },
-  footer: {
-    textAlign: "center",
+  menuRowSub: {
     fontSize: 11,
     color: colors.textMuted,
-    marginTop: 28,
+    fontWeight: "500",
+  },
+
+  // ── Footer ──
+  footer: {
+    alignItems: "center",
+    gap: 6,
+    paddingTop: 8,
+    paddingBottom: 10,
+  },
+  footerBrand: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  footerBrandText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.textMuted,
+  },
+  footerVersion: {
+    fontSize: 11,
+    color: "#C8CDD6",
     fontWeight: "500",
   },
 });

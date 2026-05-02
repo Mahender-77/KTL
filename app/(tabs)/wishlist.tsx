@@ -6,11 +6,13 @@ import {
   ScrollView,
   StatusBar,
   RefreshControl,
+  TouchableOpacity,
+  Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useState, useEffect, useCallback } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, router } from "expo-router";
 import axiosInstance from "@/constants/api/axiosInstance";
 import { Product } from "@/assets/types/product";
 import ProductGrid from "@/components/product/ProductGrid";
@@ -18,7 +20,6 @@ import { colors } from "@/constants/colors";
 import { SCREEN_PADDING } from "@/constants/layout";
 import { useAuth } from "@/context/AuthContext";
 import { useWishlist } from "@/context/WishlistContext";
-import { Alert } from "react-native";
 import Loader from "@/components/common/Loader";
 
 export default function WishlistScreen() {
@@ -36,20 +37,11 @@ export default function WishlistScreen() {
       setLoading(false);
       return;
     }
-
     try {
       const res = await axiosInstance.get("/api/wishlist");
       const wishlistProducts = res.data.products || [];
-      
-      // Transform wishlist products to match Product type
-      // Products are already fully populated from backend
       const formattedProducts: Product[] = wishlistProducts
-        .filter((p: any) => {
-          if (!p || !p._id) {
-            return false;
-          }
-          return true;
-        })
+        .filter((p: any) => p && p._id)
         .map((p: any): Product => {
           const rawVariants = Array.isArray(p.variants) ? p.variants : [];
           const validVariants = rawVariants
@@ -63,13 +55,14 @@ export default function WishlistScreen() {
               offerPrice: v.offerPrice,
               sku: v.sku,
             }));
-
           return {
             _id: p._id.toString(),
             name: p.name || "",
             description: p.description || "",
             images: Array.isArray(p.images) ? p.images : [],
-            variants: validVariants.length > 0 ? validVariants : [{ type: "pieces" as const, value: 1, unit: "pcs" as const, price: p.pricePerUnit ?? 0 }],
+            variants: validVariants.length > 0
+              ? validVariants
+              : [{ type: "pieces" as const, value: 1, unit: "pcs" as const, price: p.pricePerUnit ?? 0 }],
             category: p.category?._id ? p.category._id.toString() : (p.category || ""),
             pricingMode: p.pricingMode ?? "unit",
             baseUnit: p.baseUnit ?? "pcs",
@@ -78,7 +71,6 @@ export default function WishlistScreen() {
             availableQuantity: Number(p.availableQuantity) ?? 0,
           };
         });
-
       setProducts(formattedProducts);
     } catch (err) {
       setProducts([]);
@@ -94,7 +86,6 @@ export default function WishlistScreen() {
     }, [isAuthenticated])
   );
 
-  // Refresh products when wishlist count changes (e.g., item removed)
   useEffect(() => {
     if (isAuthenticated && !loading) {
       fetchWishlist();
@@ -110,7 +101,7 @@ export default function WishlistScreen() {
   const handleRemoveFromWishlist = async (productId: string) => {
     Alert.alert(
       "Remove from Wishlist",
-      "Are you sure you want to remove this product from your wishlist?",
+      "Are you sure you want to remove this product?",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -120,9 +111,7 @@ export default function WishlistScreen() {
             try {
               setRemoving(productId);
               await removeFromWishlist(productId);
-              // Remove from local state immediately for better UX
               setProducts((prev) => prev.filter((p) => p._id !== productId));
-              // Refresh to ensure sync
               await fetchWishlist();
             } catch (err) {
               Alert.alert("Error", "Failed to remove product from wishlist");
@@ -135,149 +124,290 @@ export default function WishlistScreen() {
     );
   };
 
+  // ── Not logged in ──────────────────────────────────────────────────────────
   if (!isAuthenticated) {
     return (
-      <>
-        <View style={styles.container}>
-          <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} translucent={false} />
-          <View style={styles.emptyContainer}>
-            <Ionicons name="heart-outline" size={64} color={colors.disabled} />
-            <Text style={styles.emptyTitle}>Login Required</Text>
-            <Text style={styles.emptyText}>
-              Please login to view your wishlist
-            </Text>
-          </View>
+      <View style={s.root}>
+        <StatusBar barStyle="light-content" backgroundColor="#0F1923" translucent={false} />
+        <View style={[s.header, { paddingTop: insets.top + 12 }]}>
+          <Text style={s.headerTitle}>Wishlist</Text>
         </View>
-      </>
+        <View style={s.authWrap}>
+          <View style={s.authIconWrap}>
+            <Ionicons name="heart-outline" size={44} color={colors.primary} />
+          </View>
+          <Text style={s.authTitle}>Login Required</Text>
+          <Text style={s.authSub}>Please login to view and manage your wishlist</Text>
+          <TouchableOpacity
+            style={s.authBtn}
+            onPress={() => router.push("/(auth)/login" as any)}
+            activeOpacity={0.85}
+          >
+            <Text style={s.authBtnText}>Login</Text>
+            <Ionicons name="arrow-forward" size={15} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      </View>
     );
   }
 
   return (
-      <>
-        <View style={styles.container}>
-          <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} translucent={false} />
+    <View style={s.root}>
+      <StatusBar barStyle="light-content" backgroundColor="#0F1923" translucent={false} />
 
-          {/* Header */}
-        <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
-          <View style={styles.headerBlob} />
-          <Text style={styles.headerTitle}>My Wishlist</Text>
-          <Text style={styles.headerSubtitle}>
-            {products.length} {products.length === 1 ? "item" : "items"}
-          </Text>
-        </View>
-
-        {/* Content */}
-        {loading ? (
-          <Loader variant="fullscreen" message="Loading wishlist..." />
-        ) : products.length === 0 ? (
-          <ScrollView
-            contentContainerStyle={styles.emptyScroll}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-            }
-          >
-            <View style={styles.emptyContainer}>
-              <Ionicons name="heart-outline" size={80} color={colors.disabled} />
-              <Text style={styles.emptyTitle}>Your wishlist is empty</Text>
-              <Text style={styles.emptyText}>
-                Start adding products you love to your wishlist
-              </Text>
+      {/* ── Header ── */}
+      <View style={[s.header, { paddingTop: insets.top + 12 }]}>
+        <View style={s.headerLeft}>
+          <Text style={s.headerTitle}>Wishlist</Text>
+          {products.length > 0 && (
+            <View style={s.headerBadge}>
+              <Text style={s.headerBadgeText}>{products.length}</Text>
             </View>
-          </ScrollView>
-        ) : (
-          <ScrollView
-            style={styles.scroll}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-            }
-          >
-            <ProductGrid
-              products={products}
-              onRemove={handleRemoveFromWishlist}
-              showRemoveButton={true}
-            />
-          </ScrollView>
+          )}
+        </View>
+        {products.length > 0 && (
+          <Text style={s.headerSub}>
+            {products.length} {products.length === 1 ? "item" : "items"} saved
+          </Text>
         )}
       </View>
-    </>
+
+      {/* ── Content ── */}
+      {loading ? (
+        <Loader variant="fullscreen" message="Loading wishlist..." />
+      ) : products.length === 0 ? (
+        <ScrollView
+          contentContainerStyle={s.emptyWrap}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={s.emptyIconWrap}>
+            <Ionicons name="heart-outline" size={48} color={colors.primary} />
+          </View>
+          <Text style={s.emptyTitle}>Nothing saved yet</Text>
+          <Text style={s.emptySub}>
+            Tap the heart icon on any product to save it here
+          </Text>
+          <TouchableOpacity
+            style={s.shopBtn}
+            onPress={() => router.push("/(tabs)")}
+            activeOpacity={0.85}
+          >
+            <Text style={s.shopBtnText}>Browse Products</Text>
+            <Ionicons name="arrow-forward" size={15} color="#fff" />
+          </TouchableOpacity>
+        </ScrollView>
+      ) : (
+        <ScrollView
+          style={s.scroll}
+          contentContainerStyle={s.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+        >
+          {/* Info strip */}
+          <View style={s.infoStrip}>
+            <Ionicons name="heart" size={13} color={colors.primary} />
+            <Text style={s.infoStripText}>
+              Pull down to refresh · Tap heart to remove
+            </Text>
+          </View>
+
+          <ProductGrid
+            products={products}
+            onRemove={handleRemoveFromWishlist}
+            showRemoveButton={true}
+          />
+        </ScrollView>
+      )}
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
+const s = StyleSheet.create({
+  root: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: "#F4F6F9",
   },
+
+  // ── Header ──
   header: {
-    backgroundColor: colors.primaryDark,
-    paddingBottom: 20,
+    backgroundColor: "#0F1923",
+    paddingBottom: 14,
     paddingHorizontal: SCREEN_PADDING,
-    overflow: "hidden",
-    position: "relative",
   },
-  headerBlob: {
-    position: "absolute",
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: colors.primary,
-    opacity: 0.3,
-    top: -50,
-    right: -20,
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 2,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: "900",
+    fontSize: 18,
+    fontWeight: "800",
     color: "#fff",
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
+  },
+  headerBadge: {
+    backgroundColor: colors.primary,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 5,
+  },
+  headerBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#fff",
+  },
+  headerSub: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.5)",
+    fontWeight: "500",
+  },
+
+  // ── Auth gate ──
+  authWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 40,
+    gap: 12,
+    backgroundColor: "#F4F6F9",
+  },
+  authIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: "#EEF2FF",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 4,
   },
-  headerSubtitle: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.7)",
-    fontWeight: "500",
+  authTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: colors.textPrimary,
   },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingTop: 16,
-    paddingBottom: 40,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 14,
+  authSub: {
+    fontSize: 13,
     color: colors.textMuted,
-    fontWeight: "500",
+    textAlign: "center",
+    lineHeight: 20,
   },
-  emptyScroll: {
+  authBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginTop: 8,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  authBtnText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+
+  // ── Empty ──
+  emptyWrap: {
     flexGrow: 1,
-  },
-  emptyContainer: {
-    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: SCREEN_PADDING,
+    paddingHorizontal: 40,
+    gap: 12,
     paddingVertical: 60,
+  },
+  emptyIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: "#EEF2FF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
   },
   emptyTitle: {
     fontSize: 20,
     fontWeight: "800",
     color: colors.textPrimary,
-    marginTop: 20,
-    marginBottom: 8,
   },
-  emptyText: {
-    fontSize: 14,
+  emptySub: {
+    fontSize: 13,
     color: colors.textMuted,
     textAlign: "center",
     lineHeight: 20,
+  },
+  shopBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginTop: 8,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  shopBtnText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+
+  // ── List ──
+  scroll: { flex: 1 },
+  scrollContent: {
+    paddingTop: 12,
+    paddingBottom: 40,
+  },
+  infoStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginHorizontal: 12,
+    marginBottom: 10,
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "#EAEDF2",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  infoStripText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: "500",
   },
 });

@@ -1,6 +1,7 @@
 // app/(auth)/login.tsx
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
+import { useFeedback } from "@/context/FeedbackContext";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
@@ -21,6 +22,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 export default function Login() {
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
+  const { showToast } = useFeedback();
   const router = useRouter();
 
   const [email, setEmail] = useState("");
@@ -32,14 +34,22 @@ export default function Login() {
   const handleLogin = async () => {
   
     if (!email.trim() || !password) {
-      alert("Email and password are required");
+      showToast({
+        variant: "warning",
+        title: "Missing fields",
+        message: "Email and password are required.",
+      });
       return;
     }
     try {
       setLoading(true);
       const profile = await login(email.trim(), password);
       if (!profile) {
-        alert("Could not load your profile. Try again.");
+        showToast({
+          variant: "error",
+          title: "Sign-in incomplete",
+          message: "Could not load your profile. Try again.",
+        });
         return;
       }
       const role = profile.role ?? "user";
@@ -49,7 +59,11 @@ export default function Login() {
         router.replace("/(tabs)");
       }
     } catch (error) {
-      alert("Invalid email or password");
+      showToast({
+        variant: "error",
+        title: "Sign-in failed",
+        message: "Invalid email or password.",
+      });
     } finally {
       setLoading(false);
     }

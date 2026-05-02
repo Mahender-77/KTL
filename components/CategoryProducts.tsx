@@ -97,6 +97,7 @@ export default function CategoryProducts({ selectedCategory, flatCategories, onB
           id: `product-${product._id}`,
           name: product.name,
           type: "product",
+          imageUrl: Array.isArray(product.images) ? product.images[0] : undefined,
           categoryName:
             typeof product.category === "object" && product.category?.name
               ? product.category.name
@@ -108,13 +109,11 @@ export default function CategoryProducts({ selectedCategory, flatCategories, onB
     return suggestions.slice(0, 8);
   }, [searchQuery, allProducts, selectedCategory]);
 
-  const handleSearchChange = useCallback((query: string) => {
-    setSearchQuery(query);
-  }, []);
-
   const handleSuggestionSelect = useCallback((suggestion: SearchSuggestion) => {
     if (suggestion.type === "product") {
-      const productId = suggestion.id.replace("product-", "");
+      const productId = suggestion.id.startsWith("product-")
+        ? suggestion.id.slice("product-".length)
+        : suggestion.id;
       setSearchQuery("");
       router.push({ pathname: "/product/[id]", params: { id: productId } });
     }
@@ -126,7 +125,7 @@ export default function CategoryProducts({ selectedCategory, flatCategories, onB
   return (
     <View style={styles.container}>
       <SearchBar
-        onSearchChange={handleSearchChange}
+        onQueryChange={setSearchQuery}
         suggestions={searchSuggestions}
         onSuggestionSelect={handleSuggestionSelect}
         showSuggestions={true}
@@ -203,7 +202,7 @@ export default function CategoryProducts({ selectedCategory, flatCategories, onB
       ) : (
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ paddingBottom: 40 }}
+          contentContainerStyle={styles.productScrollContent}
           showsVerticalScrollIndicator={false}
         >
           <ProductGrid products={visibleProducts} categories={flatCategories} responsive />
@@ -269,4 +268,9 @@ const styles = StyleSheet.create({
   chipTextActive: { color: colors.card, fontWeight: "700" },
   emptyState: { alignItems: "center", marginTop: 60, gap: 12 },
   emptyText: { fontSize: 15, color: colors.textMuted },
+  /** Space below breadcrumb / subcategory chips so the grid is not flush to the header area */
+  productScrollContent: {
+    paddingTop: 16,
+    paddingBottom: 40,
+  },
 });
